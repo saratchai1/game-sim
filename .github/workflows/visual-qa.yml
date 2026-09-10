@@ -1,0 +1,56 @@
+name: Visual QA
+
+on:
+  push:
+    branches:
+      - feat/3d-isometric-world
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install app dependencies
+        run: npm install
+
+      - name: Install Playwright Chromium
+        run: npx --yes playwright@1.55.0 install --with-deps chromium
+
+      - name: Start Vite server
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/game-sim-vite.log 2>&1 &
+          echo $! > /tmp/game-sim-vite.pid
+
+      - name: Wait for app
+        run: npx --yes wait-on@8.0.4 http://127.0.0.1:5173 --timeout 60000
+
+      - name: Capture desktop and mobile
+        run: |
+          mkdir -p visual-qa
+          npx --yes playwright@1.55.0 screenshot \
+            --viewport-size="1440,900" \
+            --wait-for-timeout=7000 \
+            http://127.0.0.1:5173 visual-qa/mangrove-bay-3d-desktop.png
+          npx --yes playwright@1.55.0 screenshot \
+            --device="iPhone 13" \
+            --wait-for-timeout=7000 \
+            http://127.0.0.1:5173 visual-qa/mangrove-bay-3d-mobile.png
+
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: mangrove-bay-3d-visual-qa
+          path: visual-qa/*.png
+          if-no-files-found: error
+          retention-days: 7
