@@ -1,0 +1,30 @@
+name: Add event atmosphere
+
+on:
+  push:
+    branches:
+      - feat/coastal-depth-polish
+    paths:
+      - .github/workflows/add-event-atmosphere.yml
+      - scripts/add-event-atmosphere.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/coastal-depth-polish
+          fetch-depth: 0
+      - name: Add event-responsive 3D atmosphere
+        run: python scripts/add-event-atmosphere.py
+      - name: Commit event atmosphere
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx src/MangroveWorld3DNatural.jsx
+          git commit -m "feat: add event-responsive 3d weather and wildlife"
+          git push origin HEAD:feat/coastal-depth-polish
