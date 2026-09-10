@@ -1,0 +1,47 @@
+.natural-world canvas {
+  cursor: grab;
+}
+
+.natural-world canvas:active {
+  cursor: grabbing;
+}
+
+.plot-world-label {
+  min-width: 44px;
+  padding: 4px 8px 5px;
+  border: 3px solid #6f431f;
+  border-radius: 12px;
+  color: #543419;
+  background: linear-gradient(#fff0a5, #e6b857);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.65),
+    0 4px 0 rgba(92, 51, 22, 0.45),
+    0 8px 18px rgba(41, 57, 42, 0.2);
+  font-family: "Fredoka", "Noto Sans Thai", system-ui, sans-serif;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  transform: translateY(-4px);
+}
+
+.plot-world-label.selected {
+  color: #355622;
+  border-color: #47752f;
+  background: linear-gradient(#fff975, #c8e95e);
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.75),
+    0 4px 0 rgba(54, 105, 43, 0.55),
+    0 0 18px rgba(255, 236, 77, 0.55);
+}
+
+@media (max-width: 720px) {
+  .plot-world-label {
+    min-width: 36px;
+    padding: 3px 6px 4px;
+    border-width: 2px;
+    border-radius: 9px;
+    font-size: 10px;
+  }
+}
