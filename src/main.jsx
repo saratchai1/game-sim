@@ -1,12 +1,10 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import App from './App.jsx'
-import './styles.css'
-import './hayday-theme.css'
-import './game-complete.css'
+import App3D from './App3D.jsx'
+import './isometric-3d.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <App />
+    <App3D />
   </React.StrictMode>,
 )
