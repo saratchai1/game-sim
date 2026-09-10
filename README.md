@@ -1,58 +1,44 @@
-# Mangrove Bay — Blue Carbon Restoration Game v1.0
+# Mangrove Bay 3D
 
-เกมจำลองการฟื้นฟูป่าชายเลนแบบ cozy management / farm game ผู้เล่นเลือกพันธุ์ไม้ให้เหมาะกับพื้นที่ ดูแลอัตรารอด สร้าง Carbon Value และ Non-carbon Benefit แล้วพัฒนาโครงการจนผ่าน **Living Coast Standard** ภายในเกม
+เกมจำลองการฟื้นฟูป่าชายเลนแบบ interactive 3D: เลือกพันธุ์ไม้ให้เหมาะกับระดับน้ำและดิน ดูการเติบโตในฉากสามมิติ สะสม Estimated Carbon ส่ง Drone + Field ตรวจ MRV เพื่อออก Verified Carbon Credit และบริหาร Non-carbon Benefit ไปพร้อมกัน
 
-> UI ใช้บรรยากาศเกมฟาร์มการ์ตูนสีสดเป็นแรงบันดาลใจ แต่ไม่ได้ใช้โลโก้ ภาพ หรือ asset ของเกมเชิงพาณิชย์อื่น
+## Visual direction
+
+เวอร์ชัน 2 เปลี่ยนจากหน้าตาแบบ card/board game เป็นโลกชายฝั่ง 3D แบบ isometric ที่หมุนและซูมได้ โดยใช้ procedural low-poly geometry ทั้งหมด:
+
+- แปลงปลูก 3D จำนวน 16 แปลง
+- โกงกาง แสม และลำพูที่มีรูปทรงและระยะการเติบโตต่างกัน
+- รากค้ำยัน รากหายใจ เรือนยอด และต้นที่ไม่รอด
+- น้ำ เกาะชายฝั่ง หมู่บ้าน เรือนเพาะชำ MRV Lab โดรน ท่าเรือ เรือ เมฆ และเงาแบบ real-time
+- UI สีสดแบบเกมบริหารฟาร์ม แต่เป็นงานออกแบบต้นฉบับสำหรับโครงการป่าชายเลน
+- ไม่มีภาพที่สร้างด้วย AI ไม่มีโมเดลหรือ asset ที่คัดลอกจากเกมเชิงพาณิชย์
 
 ## Core loop
 
-1. เลือกพันธุ์ **โกงกาง / แสม / ลำพู**
-2. อ่านสภาพแปลงจาก **ระดับน้ำ + ดิน** แล้วปลูกให้เหมาะสม
-3. กด **จบวันนี้** ให้ต้นไม้เติบโต เปลี่ยนสุขภาพ และสะสม Estimated Carbon
-4. ดูแลแปลงที่สุขภาพต่ำ และรับมือเหตุการณ์ชายฝั่ง / สภาพอากาศ / ชุมชน
-5. เมื่อ Estimated Carbon >= **5 tCO₂e** ส่ง **Drone + Field MRV**
-6. MRV เปลี่ยน Estimated Carbon เป็น **Verified Carbon Credit**
-7. ถือหรือขายเครดิต แล้วนำเงินกลับมาปลูก ดูแล และอัปเกรดโครงการ
-8. รักษา **Biodiversity + Community + Coastal resilience** ให้สมดุล
-9. ทำเงื่อนไข Living Coast Standard ให้ครบเพื่อจบ campaign
+1. เลือก **โกงกาง / แสม / ลำพู** จาก Nursery dock
+2. คลิกแปลงในฉาก 3D เพื่อปลูกตาม **ระดับน้ำ + ชนิดดิน**
+3. กด **จบวันนี้** เพื่อให้ต้นไม้โต สุขภาพเปลี่ยน และสะสมคาร์บอน
+4. บำรุงแปลง รับมือมรสุม น้ำหนุน ขยะทะเล และเหตุการณ์ชุมชน
+5. เมื่อ Estimated Carbon ถึงเกณฑ์ ส่ง **Drone + Field MRV**
+6. รับ Verified Carbon Credit แล้วถือหรือขายในตลาด
+7. อัปเกรด Nursery, MRV Lab และ Community Team
+8. ทำ Living Coast Standard ให้ครบทั้ง Carbon, Biodiversity, Community, Coastal Resilience และ Survival
 
-## v1.0 gameplay
+## Features
 
-- 16 restoration plots พร้อม tide / soil suitability
-- 3 mangrove species และ gameplay trait ต่างกัน
-- Growth stages: seedling → young → mature
-- Health, survival, failed planting, maintenance และ replanting
-- Estimated Carbon → Drone + Field MRV → Verified Carbon Credit
-- Carbon market พร้อมราคาที่เปลี่ยนรายวัน
-- รายได้ชุมชนเมื่อ Community score พัฒนา
-- Biodiversity, Community และ Coastal-resilience impact system
-- Species-diversity bonus
-- 6 random-event scenarios พร้อม decision / trade-off
-- 3 project upgrades: Community Nursery, Drone MRV, Field/Community Team
-- 4 restoration story chapters พร้อม reward
-- 6 achievements
-- Living Coast Standard จำนวน 7 เงื่อนไข
-- End-game result / Project Grade และ Sandbox หลังจบเกม
-- Emergency recovery grant ป้องกัน save ติดทางตัน
-- First-play tutorial และ replay tutorial
-- Field activity log
-- Browser local autosave พร้อม migration จาก save v1
-- Responsive desktop / tablet / mobile UI
-- GitHub Actions production-build validation
-
-## Living Coast Standard
-
-Campaign สำเร็จเมื่อผู้เล่นทำครบ:
-
-- ต้นไม้รอด >= 12 ต้น
-- ต้นโตเต็มที่ >= 8 ต้น
-- Verified Carbon สะสม >= 25 tCO₂e
-- Biodiversity >= 45
-- Community >= 35
-- Coastal resilience >= 35
-- Survival rate >= 70%
-
-หลังจบ campaign สามารถเลือกเล่นต่อแบบ Sandbox หรือเริ่มโครงการใหม่
+- Orthographic isometric camera พร้อม rotate / zoom
+- Procedural 3D world ด้วย Three.js + React Three Fiber
+- Tide/soil suitability สำหรับพันธุ์ไม้ 3 ชนิด
+- Growth stage, health, survival, maintenance และ replanting
+- Estimated Carbon → MRV → Verified Carbon Credit
+- Carbon market และเศรษฐกิจโครงการ
+- Biodiversity, Community และ Coastal-resilience scores
+- Random decision events 6 แบบ
+- Building upgrades 3 สาย ระดับละ 3 ขั้น
+- Story campaign 4 บท และเงื่อนไขจบ Living Coast Standard
+- Browser autosave แยกสำหรับเวอร์ชัน 3D
+- Responsive desktop/tablet/mobile UI
+- WebGL fallback message
 
 ## Run locally
 
@@ -61,22 +47,12 @@ npm install
 npm run dev
 ```
 
-Production build check:
+Production build:
 
 ```bash
 npm run build
 ```
 
-## Branch / deployment
-
-ตัวเกม v1.0 อยู่ที่:
-
-`feat/mangrove-blue-carbon-mvp`
-
-PR: `#1`
-
-**งานนี้ไม่ได้ deploy ไป Vercel และยังไม่ merge เข้า `main`** เพื่อไม่ให้ Git integration trigger production deployment โดยไม่ได้ตั้งใจ
-
 ## Simulation disclaimer
 
-Carbon accumulation, verification rate, market price, species suitability, survival behavior และ non-carbon scores เป็นค่าจำลองสำหรับ gameplay เท่านั้น ไม่ใช่ carbon-credit methodology, ecological prescription หรือค่าที่ใช้สำหรับการออกเครดิตของโครงการจริง
+Carbon accumulation, verification rate, market price, species suitability และ Non-carbon Benefit ในเกมเป็นค่าจำลองเพื่อ gameplay ไม่ใช่วิธีการคำนวณเครดิตจริง คำแนะนำการปลูกจริง หรือผลการรับรองโครงการ
