@@ -149,6 +149,39 @@ function LeafCluster({ position, scale, color }) {
   )
 }
 
+
+function BlueCarbonOrb({ seed = 0 }) {
+  const group = useRef()
+
+  useFrame((state) => {
+    if (!group.current) return
+    const time = state.clock.elapsedTime
+    group.current.position.y = 2.68 + Math.sin(time * 1.6 + seed) * 0.1
+    group.current.rotation.y = time * 0.75 + seed
+    const pulse = 0.9 + Math.sin(time * 2.4 + seed) * 0.08
+    group.current.scale.setScalar(pulse)
+  })
+
+  return (
+    <group ref={group} position={[0, 2.68, 0]}>
+      <mesh castShadow>
+        <octahedronGeometry args={[0.13, 0]} />
+        <meshStandardMaterial
+          color="#62dff0"
+          emissive="#147993"
+          emissiveIntensity={0.9}
+          roughness={0.24}
+          metalness={0.08}
+        />
+      </mesh>
+      <mesh position={[0, -0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.18, 0.016, 6, 20]} />
+        <meshBasicMaterial color="#c5fbff" transparent opacity={0.68} depthWrite={false} />
+      </mesh>
+    </group>
+  )
+}
+
 function DeadTree() {
   return (
     <group position={[0, 0.12, 0]}>
@@ -179,11 +212,14 @@ function MangroveTree({ plot, plotId }) {
   const group = useRef()
   const look = SPECIES_LOOK[plot.species] || SPECIES_LOOK.rhizophora
   const stageScale = plot.age < 1 ? 0.35 : plot.age < 3 ? 0.58 : plot.age < 6 ? 0.82 : 1
+  const growthScale = useRef(plot.age === 0 ? 0.12 : stageScale)
   const healthScale = 0.8 + (Math.max(plot.health, 10) / 100) * 0.2
   const seed = plotId * 17
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     if (!group.current || plot.dead) return
+    growthScale.current = THREE.MathUtils.damp(growthScale.current, stageScale, 5.8, delta)
+    group.current.scale.setScalar(growthScale.current)
     group.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.85 + seed) * 0.018
     group.current.rotation.x = Math.cos(state.clock.elapsedTime * 0.66 + seed) * 0.011
   })
@@ -216,7 +252,7 @@ function MangroveTree({ plot, plotId }) {
       ref={group}
       position={[0, 0.07, 0]}
       rotation={[0, pseudo(seed) * Math.PI * 2, 0]}
-      scale={stageScale}
+      scale={growthScale.current}
     >
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]}>
         <circleGeometry args={[0.95, 24]} />
@@ -277,6 +313,8 @@ function MangroveTree({ plot, plotId }) {
           ))}
         </group>
       )}
+
+      {plot.age >= 6 && plot.health >= 70 && <BlueCarbonOrb seed={seed} />}
     </group>
   )
 }
@@ -576,9 +614,17 @@ function WaterChannel({ points, radius = 0.44 }) {
   useEffect(() => () => geometry.dispose(), [geometry])
 
   return (
-    <mesh geometry={geometry} scale={[1, 0.12, 1]} position={[0, 0.22, 0]} receiveShadow>
-      <meshStandardMaterial color="#45b5cc" roughness={0.24} transparent opacity={0.9} />
-    </mesh>
+    <group>
+      <mesh geometry={geometry} scale={[1.08, 0.22, 1.08]} position={[0, 0.29, 0]} receiveShadow>
+        <meshStandardMaterial color="#66503e" roughness={1} />
+      </mesh>
+      <mesh geometry={geometry} scale={[1, 0.09, 1]} position={[0, 0.38, 0]} receiveShadow>
+        <meshStandardMaterial color="#3fb9d2" roughness={0.2} transparent opacity={0.94} />
+      </mesh>
+      <mesh geometry={geometry} scale={[0.93, 0.025, 0.93]} position={[0, 0.425, 0]}>
+        <meshBasicMaterial color="#b9f4fb" transparent opacity={0.24} depthWrite={false} />
+      </mesh>
+    </group>
   )
 }
 
@@ -1182,9 +1228,9 @@ function CameraRig({ selectedPlot }) {
 
   useEffect(() => {
     const responsiveZoom = size.width < 600
-      ? 22
+      ? 26
       : size.width < 900
-        ? 30
+        ? 32
         : Math.max(30, Math.min(46, Math.min(size.width / 29, size.height / 22)))
     camera.position.set(20, 18, 22)
     camera.zoom = responsiveZoom
