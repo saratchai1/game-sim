@@ -1,0 +1,30 @@
+name: Refine tidal channels
+
+on:
+  push:
+    branches:
+      - feat/coastal-depth-polish
+    paths:
+      - .github/workflows/refine-tidal-channels.yml
+      - scripts/refine-tidal-channels.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/coastal-depth-polish
+          fetch-depth: 0
+      - name: Refine channel proportions and material
+        run: python scripts/refine-tidal-channels.py
+      - name: Commit channel refinement
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/MangroveWorld3DNatural.jsx
+          git commit -m "style: refine tidal creeks into the mudflat"
+          git push origin HEAD:feat/coastal-depth-polish
