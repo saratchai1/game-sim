@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import MangroveWorld3D from './MangroveWorld3D.jsx'
+import { freshJourney, rankFor, WILDLIFE, missionFor, claimMission, rewardPlant, fieldwork, discoverWildlife, diversityBonus, reconcileDeaths, restoreGame } from './coast-progression.js'
 
 const SAVE_KEY = 'mangrove-bay-3d-save-v2'
 
@@ -181,6 +182,7 @@ const createInitialPlots = () => PLOT_CONDITIONS.map(([tide, soil], index) => ({
 
 const createInitialGame = () => ({
   version: 2,
+  journey: freshJourney(),
   day: 1,
   coins: 960,
   gems: 12,
@@ -206,8 +208,9 @@ function safeLoad() {
     const raw = localStorage.getItem(SAVE_KEY)
     if (!raw) return createInitialGame()
     const parsed = JSON.parse(raw)
-    if (parsed.version !== 2 || !Array.isArray(parsed.plots)) return createInitialGame()
-    return parsed
+    const restored = restoreGame(parsed, createInitialGame())
+    restored.event = EVENTS.find((event) => event.id === restored.event?.id) || null
+    return restored
   } catch {
     return createInitialGame()
   }
@@ -242,14 +245,58 @@ function App() {
   const [game, setGame] = useState(safeLoad)
   const [selectedPlot, setSelectedPlot] = useState(null)
   const [notice, setNotice] = useState('เลือกพันธุ์ไม้ด้านล่าง แล้วคลิกแปลงว่างในฉาก 3D')
-  const [showHelp, setShowHelp] = useState(() => !localStorage.getItem('mangrove-bay-3d-help-seen'))
+  const [showHelp, setShowHelp] = useState(() => { try { return !localStorage.getItem('mangrove-bay-3d-help-seen') } catch { return true } })
   const [showUpgrades, setShowUpgrades] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const [showGoals, setShowGoals] = useState(false)
-  const [sandbox, setSandbox] = useState(false)
+  const [sandbox, setSandbox] = useState(() => game.journey.sandbox)
+  const [showJournal, setShowJournal] = useState(false)
+  const [showPlots, setShowPlots] = useState(false)
+  const [showEconomy, setShowEconomy] = useState(false)
+  const [photoMode, setPhotoMode] = useState(false)
+  const [cameraReset, setCameraReset] = useState(0)
+  const [sound, setSound] = useState(false)
+  const [saveError, setSaveError] = useState(false)
+  const [dayReport, setDayReport] = useState(null)
+  const audioRef = useRef(null)
+  const rank = rankFor(game.journey.xp)
+  const mission = missionFor(game)
+  const forestBonus = diversityBonus(game)
+  const playChime = () => {
+    if (!sound) return
+    try {
+      const Audio = window.AudioContext || window.webkitAudioContext
+      if (!Audio) return
+      const context = audioRef.current || (audioRef.current = new Audio())
+      context.resume().catch(() => {})
+      ;[523.25, 659.25, 783.99].forEach((frequency, index) => {
+        const oscillator = context.createOscillator()
+        const gain = context.createGain()
+        const start = context.currentTime + index * 0.07
+        oscillator.frequency.value = frequency
+        gain.gain.setValueAtTime(0, start)
+        gain.gain.linearRampToValueAtTime(0.055, start + 0.012)
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.25)
+        oscillator.connect(gain).connect(context.destination)
+        oscillator.start(start)
+        oscillator.stop(start + 0.3)
+        oscillator.onended = () => { oscillator.disconnect(); gain.disconnect() }
+      })
+    } catch { /* Sound is optional on browsers without Web Audio. */ }
+  }
+  useEffect(() => () => { audioRef.current?.close().catch(() => {}); audioRef.current = null }, [])
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      setPhotoMode(false); setShowPlots(false); setShowJournal(false)
+      setShowEconomy(false); setShowGoals(false); setShowUpgrades(false); setShowLog(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   useEffect(() => {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(game))
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(game)); setSaveError(false) } catch { setSaveError(true) }
   }, [game])
 
   const derived = useMemo(() => {
@@ -283,6 +330,14 @@ function App() {
     }
   }, [game])
 
+  useEffect(() => {
+    const next = discoverWildlife(game)
+    if (next === game) return
+    const names = WILDLIFE.filter((animal) => next.journey.discovered.includes(animal.id) && !game.journey.discovered.includes(animal.id)).map((animal) => animal.name)
+    setGame((current) => discoverWildlife(current))
+    setNotice(`ค้นพบ ${names.join(' · ')}! รับทุนสำรวจ +${next.coins - game.coins} เหรียญ`)
+  }, [game])
+
   const selected = game.plots.find((plot) => plot.id === selectedPlot) || null
   const year = Math.floor((game.day - 1) / 20) + 1
   const mrvCost = getMrvCost(game)
@@ -313,12 +368,12 @@ function App() {
   const plant = (plotId) => {
     setGame((current) => {
       const plot = current.plots.find((item) => item.id === plotId)
-      if (!plot || plot.species) return current
+      if (current.event || !plot || plot.species) return current
       const speciesKey = current.activeSpecies
       const species = SPECIES[speciesKey]
       const cost = getPlantCost(current, speciesKey)
       if (current.coins < cost) {
-        setNotice('เหรียญไม่พอ ออกเครดิตหรือขายเครดิตเพื่อเพิ่มงบโครงการ')
+        setNotice('เหรียญไม่พอ · ชวนชุมชนเก็บขยะรับ 45 เหรียญ หรือขายเครดิตเพื่อเพิ่มงบ')
         return current
       }
       const fit = suitability(plot, speciesKey)
@@ -333,8 +388,9 @@ function App() {
           ? { ...item, species: speciesKey, age: 0, health, dead: false }
           : item),
       }
+      next = rewardPlant(next, fit)
       next = appendLog(next, `ปลูก${species.short}ในแปลง ${plotId} · ความเหมาะสม ${fit}/2`, 'plant')
-      setNotice(`${species.name}ถูกปลูกในแปลง ${plotId} · Fit ${fit}/2`)
+      setNotice(fit === 2 ? `ปลูกได้เหมาะมาก! คอมโบ ×${next.journey.combo} · คืนทุน +${next.journey.combo * 4} ● · +16 XP` : `${species.name} · Fit ${fit}/2 · ลองเลือกพันธุ์ให้ตรงน้ำและดินเพื่อรับคอมโบ`)
       return next
     })
     setSelectedPlot(plotId)
@@ -343,7 +399,8 @@ function App() {
   const handlePlotClick = (plotId) => {
     const plot = game.plots.find((item) => item.id === plotId)
     setSelectedPlot(plotId)
-    if (plot && !plot.species) plant(plotId)
+    if (game.event) return
+    if (plot && !plot.species) { plant(plotId); if (game.coins >= getPlantCost(game, game.activeSpecies)) playChime() }
     else if (plot?.dead) setNotice(`แปลง ${plotId} ต้องเคลียร์พื้นที่ก่อนปลูกใหม่`)
     else if (plot) setNotice(`เลือกแปลง ${plotId} · ${SPECIES[plot.species].name}`)
   }
@@ -351,6 +408,8 @@ function App() {
   const maintainSelected = () => {
     if (!selected?.species || selected.dead) return
     setGame((current) => {
+      const target = current.plots.find((p) => p.id === selected.id)
+      if (!target?.species || target.dead || target.health >= 100) return current
       if (current.coins < 38) {
         setNotice('ต้องใช้ 38 เหรียญสำหรับบำรุงรักษาแปลง')
         return current
@@ -371,6 +430,7 @@ function App() {
   const clearSelected = () => {
     if (!selected?.dead) return
     setGame((current) => {
+      if (!current.plots.find((p) => p.id === selected.id)?.dead) return current
       if (current.coins < 28) {
         setNotice('ต้องใช้ 28 เหรียญเพื่อเตรียมพื้นที่ใหม่')
         return current
@@ -394,6 +454,7 @@ function App() {
     }
 
     setGame((current) => {
+      if (current.event) return current
       let carbonGain = 0
       let biodiversityGain = 0
       let coastalGain = 0
@@ -420,6 +481,7 @@ function App() {
         return { ...plot, age, health, dead }
       })
 
+      carbonGain *= diversityBonus(current)
       const nextDayNumber = current.day + 1
       const communityIncome = current.community >= 32
         ? 10 + current.upgrades.community * 8
@@ -433,6 +495,7 @@ function App() {
       let next = {
         ...current,
         day: nextDayNumber,
+        journey: { ...current.journey, combo: 0, xp: current.journey.xp + 5 },
         coins: current.coins + communityIncome,
         plots,
         estimatedCarbon: current.estimatedCarbon + carbonGain,
@@ -446,6 +509,7 @@ function App() {
       next = appendLog(next, `Day ${nextDayNumber}: สะสมคาร์บอนประมาณ +${carbonGain.toFixed(1)} tCO₂e`, 'day')
       if (communityIncome) next = appendLog(next, `ชุมชนสร้างรายได้กลับเข้าโครงการ +${communityIncome} เหรียญ`, 'reward')
       if (deaths) next = appendLog(next, `มีต้นไม้ไม่รอด ${deaths} ต้น ตรวจ Fit และสุขภาพแปลง`, 'warning')
+      setDayReport({ day: nextDayNumber, carbon: carbonGain, income: communityIncome, mature: plots.filter((p) => p.species && !p.dead && p.age === 6).length, deaths })
       setNotice(event ? 'มีเหตุการณ์ใหม่เกิดขึ้นในพื้นที่' : `เข้าสู่ Day ${nextDayNumber} · Carbon +${carbonGain.toFixed(1)}`)
       return next
     })
@@ -482,7 +546,7 @@ function App() {
   const sellCredits = (requested) => {
     setGame((current) => {
       const amount = requested === 'all'
-        ? Math.floor(current.credits * 10) / 10
+        ? current.credits
         : Math.min(requested, Math.floor(current.credits))
       if (!amount || amount <= 0) {
         setNotice('ยังไม่มี Verified Carbon Credit เพียงพอสำหรับขาย')
@@ -607,6 +671,8 @@ function App() {
         }
       }
 
+      next = reconcileDeaths(current, next)
+      next.journey = { ...next.journey, xp: next.journey.xp + 20 }
       setNotice(text)
       return appendLog(next, text, 'event')
     })
@@ -617,17 +683,22 @@ function App() {
     setGame(fresh)
     setSelectedPlot(null)
     setSandbox(false)
+    setDayReport(null)
+    setCameraReset((v) => v + 1)
     setNotice('เริ่มโครงการใหม่แล้ว · เลือกพันธุ์และคลิกพื้นที่ 3D')
   }
 
   const closeHelp = () => {
-    localStorage.setItem('mangrove-bay-3d-help-seen', '1')
+    try { localStorage.setItem('mangrove-bay-3d-help-seen', '1') } catch { /* Session-only mode. */ }
     setShowHelp(false)
   }
 
   return (
-    <div className="game3d-shell">
+    <div className={`game3d-shell ${photoMode ? 'photo-mode' : ''}`}>
       <MangroveWorld3D
+        cameraReset={cameraReset}
+        weather={game.event?.id}
+        fireflies={WILDLIFE.find((animal) => animal.id === 'firefly').test(game)}
         plots={game.plots}
         selectedPlot={selectedPlot}
         activeSpecies={game.activeSpecies}
@@ -637,13 +708,14 @@ function App() {
         upgrades={game.upgrades}
       />
 
+      {photoMode && <button className="photo-exit" onClick={() => setPhotoMode(false)}>← กลับเข้าเกม · Esc</button>}
       <div className="game-ui">
         <header className="top-hud">
           <div className="brand-plaque">
             <span className="brand-emblem">M</span>
             <span>
               <strong>MANGROVE BAY</strong>
-              <small>BLUE CARBON RESTORATION</small>
+              <small>A LITTLE BAY. A BIG COMEBACK.</small>
             </span>
           </div>
 
@@ -657,17 +729,37 @@ function App() {
             <button className="round-ui-button" onClick={() => setShowHelp(true)} aria-label="เปิดวิธีเล่น">?</button>
             <button className="round-ui-button" onClick={() => setShowUpgrades(true)} aria-label="เปิดอัปเกรด">↑</button>
             <div className="day-badge"><small>YEAR {year}</small><b>DAY {game.day}</b></div>
-            <button className="next-day-button" onClick={nextDay}>
+            <button className="next-day-button" onClick={nextDay} disabled={Boolean(game.event)} aria-label="จบวันนี้">
               <span>จบวันนี้</span><b>›</b>
             </button>
           </div>
         </header>
 
         <aside className="left-stack">
+          <section className="ranger-card">
+            <span className="ranger-badge">{rank.level}</span>
+            <div><small>COAST KEEPER</small><strong>{rank.name}</strong><div className="xp-track"><i style={{ width: `${rank.progress}%` }} /></div><small>{game.journey.xp} / {rank.next?.xp || 'MAX'} XP</small></div>
+          </section>
+          <section className={`mission-card ${mission.ready ? 'ready' : ''}`}>
+            <div className="eyebrow">✧ ภารกิจ {game.journey.mission + 1}<span>+{mission.xp} XP</span></div>
+            <h2>{mission.name}</h2><p>{mission.description}</p>
+            <div className="mission-progress"><i style={{ width: `${Math.min(100, mission.value / mission.goal * 100)}%` }} /></div>
+            <div className="mission-bottom"><span>{Math.floor(mission.value)} / {mission.goal}</span><b>+{mission.coins} ●</b></div>
+            <button disabled={!mission.ready || Boolean(game.event)} onClick={() => {
+              if (!mission.ready || game.event) return
+              setGame((current) => { const next = claimMission(current); return next === current ? current : appendLog(next, `ภารกิจสำเร็จ: ${missionFor(current).name}`, 'reward') })
+              setNotice(`ภารกิจสำเร็จ · +${mission.coins} เหรียญ · +${mission.xp} XP`); playChime()
+            }}>{mission.ready ? 'รับรางวัล ✦' : mission.recurring && game.journey.deliveryDay === game.day ? 'รับงานใหม่วันถัดไป' : 'กำลังฟื้นฟู…'}</button>
+          </section>
+          <button className="fieldwork-button" disabled={game.journey.fieldworkDay === game.day || Boolean(game.event)} onClick={() => {
+            if (game.journey.fieldworkDay === game.day || game.event) return
+            setGame((current) => fieldwork(current)); setNotice('ชุมชนร่วมเก็บขยะ · +45 เหรียญ · สุขภาพทุกต้น +2 · +12 XP'); playChime()
+          }}><span>♧</span><div><b>{game.journey.fieldworkDay === game.day ? 'ชายฝั่งสะอาดแล้ว ✓' : 'ชวนชุมชนเก็บขยะ'}</b><small>{game.journey.fieldworkDay === game.day ? 'ทำได้อีกครั้งวันถัดไป' : '+45 ● · +12 XP · วันละ 1 ครั้ง'}</small></div></button>
+
           <button className="quest-card" onClick={() => setShowGoals(true)}>
             <span className="quest-pin">★</span>
             <span>
-              <small>STORY PROGRESS</small>
+              <small>เป้าหมายระยะยาว</small>
               <strong>{game.claimedChapters.length}/4 บท</strong>
               <em>{STORY_CHAPTERS.find((_, index) => !game.claimedChapters.includes(index))?.text || 'Living Coast สำเร็จ'}</em>
             </span>
@@ -679,7 +771,9 @@ function App() {
           </button>
         </aside>
 
-        <aside className="right-dashboard">
+        <div className="coast-status"><span>◌ อ่าวป่าชายเลน</span><b>{game.event ? 'มีเหตุการณ์รอการตัดสินใจ' : `อีก ${5 - game.day % 5} วันถึงเหตุการณ์ชายฝั่ง`}</b><small>{forestBonus > 1 ? '✦ ป่า 3 สายพันธุ์ · Carbon +15%' : 'ปลูกครบ 3 สายพันธุ์เพื่อรับ Carbon +15%'}</small></div>
+        <aside className={`right-dashboard ${showEconomy ? 'expanded' : ''}`}>
+          <button className="economy-close" onClick={() => setShowEconomy(false)} aria-label="ปิดเศรษฐกิจ">×</button>
           <section className="dashboard-panel carbon-panel">
             <div className="panel-title-row">
               <span><small>CARBON PIPELINE</small><strong>Drone + Field MRV</strong></span>
@@ -693,7 +787,8 @@ function App() {
             <div className="pipeline-steps">
               <span className="done">ปลูก</span><i>›</i><span className={game.estimatedCarbon >= 5 ? 'done' : ''}>ติดตาม</span><i>›</i><span>Verify</span><i>›</i><span>Credit</span>
             </div>
-            <button className="primary-game-button" onClick={verifyCarbon}>
+            <p className="mrv-hint">{game.estimatedCarbon < 5 ? 'สะสมอย่างน้อย 5 tCO₂e เพื่อส่งตรวจ' : game.coins < mrvCost ? 'ทุนไม่พอ · เก็บขยะหรือขายเครดิตก่อน' : 'พร้อมตรวจสอบและออกเครดิต'}</p>
+            <button className="primary-game-button" onClick={verifyCarbon} disabled={game.estimatedCarbon < 5 || game.coins < mrvCost || Boolean(game.event)}>
               <span>ส่งตรวจ MRV</span><b>{mrvCost} ●</b>
             </button>
           </section>
@@ -711,9 +806,9 @@ function App() {
           <section className="dashboard-panel market-panel">
             <div className="market-price"><span><small>MARKET PRICE</small><strong>{game.marketPrice} ●</strong></span><em>/ tCO₂e</em></div>
             <div className="market-actions">
-              <button onClick={() => sellCredits(1)}>ขาย 1</button>
-              <button onClick={() => sellCredits(5)}>ขาย 5</button>
-              <button onClick={() => sellCredits('all')}>ขายทั้งหมด</button>
+              <button disabled={game.credits < 1} onClick={() => sellCredits(1)}>ขาย 1</button>
+              <button disabled={game.credits < 1} onClick={() => sellCredits(5)}>ขาย 5</button>
+              <button disabled={game.credits <= 0} onClick={() => sellCredits('all')}>ขายทั้งหมด</button>
             </div>
           </section>
         </aside>
@@ -733,8 +828,8 @@ function App() {
                 <div className="health-bar"><span style={{ width: `${selected.health}%` }} /></div>
                 <div className="selected-actions">
                   {selected.dead
-                    ? <button onClick={clearSelected}>เคลียร์แปลง · 28 ●</button>
-                    : <button onClick={maintainSelected}>บำรุงรักษา · 38 ●</button>}
+                    ? <button disabled={game.coins < 28} onClick={clearSelected}>เคลียร์แปลง · 28 ●</button>
+                    : <button disabled={selected.health >= 100 || game.coins < 38} onClick={maintainSelected}>บำรุงรักษา · 38 ●</button>}
                 </div>
               </>
             ) : (
@@ -743,6 +838,16 @@ function App() {
           </section>
         )}
 
+        <nav className="utility-rail" aria-label="เครื่องมือเกม">
+          <button onClick={() => setShowJournal(true)} aria-label="เปิดสมุดสัตว์">✧<span>สมุดสัตว์</span><em>{game.journey.discovered.length}/4</em></button>
+          <button onClick={() => setShowPlots(true)} aria-label="เปิดแผนที่แปลง">▦<span>แปลง</span></button>
+          <button onClick={() => setShowEconomy((v) => !v)} className="economy-toggle" aria-label="เปิดเศรษฐกิจ">◆<span>เศรษฐกิจ</span></button>
+          <button onClick={() => { setSelectedPlot(null); setCameraReset((v) => v + 1) }} aria-label="คืนมุมกล้อง">⌖<span>คืนกล้อง</span></button>
+          <button onClick={() => setPhotoMode(true)} aria-label="โหมดชมวิว">▣<span>ชมวิว</span></button>
+          <button onClick={() => setSound((v) => !v)} aria-label={sound ? 'ปิดเสียง' : 'เปิดเสียง'} aria-pressed={sound}>♫<span>{sound ? 'เสียงเปิด' : 'เสียงปิด'}</span></button>
+        </nav>
+        {game.journey.combo >= 2 && <div className="combo-banner" key={`${game.day}-${game.journey.combo}`}>PERFECT PLANT <b>×{game.journey.combo}</b><span>คืนทุน +{game.journey.combo * 4} ● ต่อการปลูกที่เหมาะสม</span></div>}
+        {dayReport && <div className="day-report" role="status"><button onClick={() => setDayReport(null)} aria-label="ปิดสรุปวัน">×</button><small>รุ่งเช้าวันที่ {dayReport.day}</small><strong>+{dayReport.carbon.toFixed(1)} <span>tCO₂e</span></strong><p>{dayReport.mature ? `🌳 โตเต็มที่ ${dayReport.mature} ต้น · ` : ''}รายได้ +{dayReport.income} ●{dayReport.deaths ? ` · ไม่รอด ${dayReport.deaths} ต้น` : ''}</p></div>}
         <nav className="plant-dock" aria-label="เลือกพันธุ์ไม้">
           <div className="dock-caption"><small>NURSERY LV.{game.upgrades.nursery}</small><strong>เลือกพันธุ์แล้วคลิกแปลง</strong></div>
           {Object.entries(SPECIES).map(([key, species]) => {
@@ -751,10 +856,12 @@ function App() {
               <button
                 key={key}
                 className={`species-tool ${game.activeSpecies === key ? 'active' : ''}`}
+                aria-pressed={game.activeSpecies === key}
+                title={species.description}
                 onClick={() => selectSpecies(key)}
                 style={{ '--species-tint': species.tint }}
               >
-                <span>{species.icon}</span>
+                <span className={`seedling-icon seedling-${key}`} aria-hidden="true"><i /><i /><i /></span>
                 <b>{species.short}</b>
                 <small>{cost} ●</small>
               </button>
@@ -765,10 +872,29 @@ function App() {
           </button>
         </nav>
 
-        <div className="notice-toast"><span>i</span>{notice}</div>
+        <div className="notice-toast" role="status"><span>✦</span>{notice}</div>
+        {saveError && <div className="save-warning" role="alert">บันทึกอัตโนมัติไม่ได้ · อย่าปิดหน้านี้ ความคืบหน้าอาจสูญหาย</div>}
         <div className="camera-tip">ลากฉากเพื่อหมุน · เลื่อนเมาส์เพื่อซูม · คลิกแปลงเพื่อปลูก</div>
       </div>
 
+      {showJournal && (
+        <ModalBackdrop onClose={() => setShowJournal(false)}><div className="game-modal journal-modal"><button className="modal-close" onClick={() => setShowJournal(false)} aria-label="ปิดสมุดสัตว์">×</button>
+          <small>THE BAY IS COMING BACK</small><h2>ทุกชีวิตที่กลับมา</h2><p>ฟื้นป่าเพื่อค้นพบสัตว์ใหม่ รับทุนสำรวจและ 25 XP ต่อชนิด</p>
+          <div className="wildlife-grid">{WILDLIFE.map((animal) => {
+            const found = game.journey.discovered.includes(animal.id)
+            return <article key={animal.id} className={found ? 'discovered' : ''}><span className="animal-art">{found ? animal.icon : '◇'}</span><small>{found ? 'ค้นพบแล้ว ✓' : 'ยังไม่ค้นพบ'}</small><h3>{animal.name}</h3><p>{animal.hint}</p><b>{found ? 'บันทึกในสมุดแล้ว' : `ทุนสำรวจ +${animal.reward} ●`}</b></article>
+          })}</div><p className="journal-footnote">สมุดเก็บการค้นพบถาวรในโครงการนี้ สัตว์ในฉากจะเปลี่ยนตามสภาพป่าปัจจุบัน</p>
+        </div></ModalBackdrop>
+      )}
+      {showPlots && (
+        <ModalBackdrop onClose={() => setShowPlots(false)}><div className="game-modal plots-modal"><button className="modal-close" onClick={() => setShowPlots(false)} aria-label="ปิดแผนที่แปลง">×</button>
+          <small>PLANT WITH PURPOSE</small><h2>เลือกบ้านให้ต้นไม้</h2><p>พันธุ์ที่เลือก: {SPECIES[game.activeSpecies].name} · เขียว = เหมาะทั้งน้ำและดิน</p>
+          <div className="plot-species-picker">{Object.entries(SPECIES).map(([key, species]) => <button key={key} aria-pressed={game.activeSpecies === key} onClick={() => selectSpecies(key)}>{species.short} · {getPlantCost(game, key)} ●</button>)}</div>
+          <div className="plot-picker">{game.plots.map((plot) => <button key={plot.id} className={`fit-${suitability(plot, plot.species || game.activeSpecies)} ${plot.species ? 'occupied' : ''}`} onClick={() => { handlePlotClick(plot.id); setShowPlots(false) }}>
+            <small>แปลง {plot.id}</small><b>{plot.dead ? 'กู้พื้นที่' : plot.species ? SPECIES[plot.species].short : `ปลูก · Fit ${suitability(plot, game.activeSpecies)}/2`}</b><span>น้ำ{plot.tide} · {plot.soil}</span>
+          </button>)}</div>
+        </div></ModalBackdrop>
+      )}
       {game.event && (
         <ModalBackdrop>
           <div className="event-modal game-modal">
@@ -798,11 +924,11 @@ function App() {
             <small>HOW TO PLAY</small>
             <h2>ฟื้นป่าชายเลนในโลก 3D</h2>
             <div className="help-steps">
-              <HelpStep number="1" title="เลือกพันธุ์" text="พันธุ์แต่ละชนิดเหมาะกับระดับน้ำและดินต่างกัน" />
+              <HelpStep number="1" title="เลือกพันธุ์" text="เลือกแปลงสีเขียวในแผนที่ Fit 2/2 รับคอมโบคืนทุนสูงสุด 20 เหรียญ" />
               <HelpStep number="2" title="คลิกแปลงในฉาก" text="ปลูก ดูการเติบโต หมุนกล้อง และซูมดูพื้นที่ได้" />
-              <HelpStep number="3" title="จบวันและดูแล" text="ต้นไม้โต สะสม Carbon และเจอเหตุการณ์ชายฝั่ง" />
+              <HelpStep number="3" title="จบวันและดูแล" text="เก็บขยะรับทุนวันละ 45 เหรียญ จบวันให้ต้นไม้โต ไม่มีเวลาบังคับ" />
               <HelpStep number="4" title="ตรวจ MRV" text="Estimated Carbon ต้องผ่าน Drone + Field ก่อนออกเครดิต" />
-              <HelpStep number="5" title="สร้าง Impact" text="รักษา Biodiversity, Community และ Coastal ควบคู่ Carbon" />
+              <HelpStep number="5" title="สร้าง Impact" text="ทำภารกิจรับรางวัล สะสม XP และปลดล็อกสัตว์ในสมุดสำรวจ" />
             </div>
             <button className="primary-game-button large" onClick={closeHelp}>เริ่มเล่น</button>
             <p className="simulation-note">ค่าคาร์บอนและระบบนิเวศเป็นกลไกจำลองเพื่อการเล่น ไม่ใช่การคำนวณเครดิตจริง</p>
@@ -825,7 +951,7 @@ function App() {
                     <span className="upgrade-icon">{info.icon}</span>
                     <div><b>{info.name}</b><small>{info.description}</small></div>
                     <div className="level-dots">{[1, 2, 3].map((dot) => <i key={dot} className={dot <= level ? 'on' : ''} />)}</div>
-                    <button onClick={() => buyUpgrade(key)} disabled={level >= 3}>
+                    <button onClick={() => buyUpgrade(key)} disabled={level >= 3 || game.coins < cost}>
                       {level >= 3 ? 'MAX LEVEL' : `อัปเกรด ${cost} ●`}
                     </button>
                   </article>
@@ -898,7 +1024,7 @@ function App() {
               <span><b>{derived.survivalRate}%</b><small>Survival</small></span>
             </div>
             <div className="victory-actions">
-              <button className="primary-game-button large" onClick={() => setSandbox(true)}>เล่น Sandbox ต่อ</button>
+              <button className="primary-game-button large" onClick={() => { setSandbox(true); setGame((current) => ({ ...current, journey: { ...current.journey, sandbox: true } })) }}>เล่น Sandbox ต่อ</button>
               <button className="secondary-game-button" onClick={resetGame}>เริ่มโครงการใหม่</button>
             </div>
           </div>
@@ -927,10 +1053,29 @@ function ImpactMeter({ label, value, icon }) {
 }
 
 function ModalBackdrop({ children, onClose }) {
+  const modal = useRef(null)
+  useEffect(() => {
+    const previous = document.activeElement
+    const buttons = () => [...modal.current.querySelectorAll('button:not(:disabled), [href], input, [tabindex="0"]')]
+    buttons()[0]?.focus()
+    const trap = (event) => {
+      if (event.key !== 'Tab') return
+      const items = buttons()
+      if (!items.length) return
+      if (event.shiftKey && document.activeElement === items[0]) { event.preventDefault(); items.at(-1).focus() }
+      else if (!event.shiftKey && document.activeElement === items.at(-1)) { event.preventDefault(); items[0].focus() }
+    }
+    const node = modal.current
+    node.addEventListener('keydown', trap)
+    return () => { node.removeEventListener('keydown', trap); if (previous?.isConnected) previous.focus?.() }
+  }, [])
   return (
     <div
+      ref={modal}
       className="modal-backdrop"
-      role="presentation"
+      role="dialog"
+      aria-modal="true"
+      aria-label="รายละเอียดเกม"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose?.()
       }}
