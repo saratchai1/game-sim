@@ -43,7 +43,7 @@ function pseudo(seed) {
 
 function plotPosition(id) {
   const index = id - 1
-  return [PLOT_X[index % 4], 0.62, PLOT_Z[Math.floor(index / 4)]]
+  return [PLOT_X[index % 4], 0.92, PLOT_Z[Math.floor(index / 4)]]
 }
 
 function CameraRig() {
