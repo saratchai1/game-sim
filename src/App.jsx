@@ -634,6 +634,7 @@ function App() {
         onPlotClick={handlePlotClick}
         onClearSelection={() => setSelectedPlot(null)}
         day={game.day}
+        eventType={game.event?.id || null}
         upgrades={game.upgrades}
       />
 

@@ -564,7 +564,7 @@ function suitabilityLocal(plot, speciesKey) {
   return Number(rules.tides.includes(plot.tide)) + Number(rules.soils.includes(plot.soil))
 }
 
-function Water({ day }) {
+function Water({ day, eventType }) {
   const group = useRef()
   const ripples = useMemo(() => (
     Array.from({ length: 22 }, (_, index) => ({
@@ -576,10 +576,13 @@ function Water({ day }) {
   ), [])
 
   const tideOffset = [-0.08, -0.01, 0.11, 0.01][(Math.max(1, day) - 1) % 4]
+  const eventOffset = eventType === 'kingtide' ? 0.16 : 0
+  const stormChop = eventType === 'storm' ? 0.045 : 0.022
 
   useFrame((state) => {
     if (group.current) {
-      group.current.position.y = -0.58 + tideOffset + Math.sin(state.clock.elapsedTime * 0.55) * 0.022
+      group.current.position.y = -0.58 + tideOffset + eventOffset
+        + Math.sin(state.clock.elapsedTime * (eventType === 'storm' ? 1.2 : 0.55)) * stormChop
     }
   })
 
@@ -1235,7 +1238,7 @@ function CoastalBarriers({ plots, communityLevel }) {
   )
 }
 
-function Clouds() {
+function Clouds({ storm = false }) {
   const clouds = [
     [-11, 8.5, -10, 1.25], [7, 9.5, -12, 1], [14, 7.6, 3, 0.78], [-3, 10, 14, 0.9],
   ]
@@ -1250,12 +1253,156 @@ function Clouds() {
             ].map(([cx, cy, cz, sphereScale], cloudIndex) => (
               <mesh key={cloudIndex} position={[cx, cy, cz]} scale={sphereScale}>
                 <sphereGeometry args={[0.8, 14, 10]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.96} transparent opacity={0.92} />
+                <meshStandardMaterial
+                  color={storm ? '#a8bcc4' : '#ffffff'}
+                  roughness={0.96}
+                  transparent
+                  opacity={storm ? 0.98 : 0.92}
+                />
               </mesh>
             ))}
           </group>
         </Float>
       ))}
+    </group>
+  )
+}
+
+
+function RainField() {
+  const group = useRef()
+  const drops = useMemo(() => (
+    Array.from({ length: 72 }, (_, index) => ({
+      x: -18 + pseudo(index * 4.7 + 3) * 36,
+      y: 1.5 + pseudo(index * 7.3 + 8) * 12,
+      z: -13 + pseudo(index * 9.1 + 11) * 28,
+      length: 0.24 + pseudo(index * 2.3 + 17) * 0.34,
+      speed: 5.5 + pseudo(index * 3.8 + 23) * 3.8,
+    }))
+  ), [])
+
+  useFrame((_, delta) => {
+    if (!group.current) return
+    group.current.children.forEach((drop, index) => {
+      drop.position.y -= delta * drop.userData.speed
+      drop.position.x += delta * 0.65
+      if (drop.position.y < -0.4) {
+        const source = drops[index]
+        drop.position.set(source.x - 2.5, 11.5 + pseudo(index * 6.2) * 3.5, source.z)
+      }
+    })
+  })
+
+  return (
+    <group ref={group}>
+      {drops.map((drop, index) => (
+        <mesh
+          key={index}
+          position={[drop.x, drop.y, drop.z]}
+          rotation={[0, 0, -0.18]}
+          userData={{ speed: drop.speed }}
+        >
+          <boxGeometry args={[0.018, drop.length, 0.018]} />
+          <meshBasicMaterial color="#d9f5ff" transparent opacity={0.58} depthWrite={false} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+function FloatingTrash() {
+  const pieces = useMemo(() => (
+    Array.from({ length: 14 }, (_, index) => ({
+      x: -12 + pseudo(index * 5.2 + 1) * 24,
+      z: -11 + pseudo(index * 8.4 + 5) * 8,
+      rotation: pseudo(index * 7.8 + 3) * Math.PI,
+      color: ['#e9f2e9', '#ef8a6c', '#f4d35e', '#72bfd4'][index % 4],
+      scale: 0.65 + pseudo(index * 3.3) * 0.6,
+    }))
+  ), [])
+
+  return (
+    <group>
+      {pieces.map((piece, index) => (
+        <Float key={index} speed={0.8 + (index % 3) * 0.2} rotationIntensity={0.28} floatIntensity={0.12}>
+          <mesh
+            position={[piece.x, -0.43, piece.z]}
+            rotation={[0.3, piece.rotation, 0.2]}
+            scale={piece.scale}
+          >
+            {index % 3 === 0
+              ? <cylinderGeometry args={[0.055, 0.075, 0.32, 7]} />
+              : <boxGeometry args={[0.18, 0.045, 0.12]} />}
+            <meshStandardMaterial color={piece.color} roughness={0.72} transparent opacity={0.9} />
+          </mesh>
+        </Float>
+      ))}
+    </group>
+  )
+}
+
+function KingTideFoam() {
+  const rings = useMemo(() => (
+    Array.from({ length: 18 }, (_, index) => ({
+      x: -13 + pseudo(index * 4.1 + 2) * 26,
+      z: -10.5 + pseudo(index * 7.4 + 9) * 5,
+      scale: 0.45 + pseudo(index * 2.7 + 6) * 0.8,
+      rotation: pseudo(index * 3.5 + 12) * Math.PI,
+    }))
+  ), [])
+
+  return (
+    <group>
+      {rings.map((ring, index) => (
+        <Float key={index} speed={0.8 + (index % 4) * 0.1} rotationIntensity={0} floatIntensity={0.12}>
+          <mesh
+            position={[ring.x, -0.22, ring.z]}
+            rotation={[-Math.PI / 2, 0, ring.rotation]}
+            scale={[ring.scale * 1.7, ring.scale, 1]}
+          >
+            <torusGeometry args={[0.34, 0.025, 6, 24, Math.PI * 1.45]} />
+            <meshBasicMaterial color="#e8fdff" transparent opacity={0.6} depthWrite={false} />
+          </mesh>
+        </Float>
+      ))}
+    </group>
+  )
+}
+
+function EventAtmosphere({ eventType }) {
+  if (!eventType) return null
+
+  return (
+    <group>
+      {eventType === 'storm' && <RainField />}
+      {eventType === 'trash' && <FloatingTrash />}
+      {eventType === 'kingtide' && <KingTideFoam />}
+      {eventType === 'wildlife' && (
+        <group>
+          <Bird seed={5.4} />
+          <Bird seed={7.1} />
+          <Crab position={[-5.4, 0.47, -7.5]} seed={8} />
+          <Crab position={[4.2, 0.47, -6.8]} seed={9} />
+        </group>
+      )}
+      {eventType === 'fishers' && (
+        <group>
+          <Fish position={[-6.2, -0.42, -10.2]} color="#ffd166" seed={9.1} />
+          <Fish position={[1.1, -0.44, -9.8]} color="#8ee0dd" seed={10.4} />
+          <Fish position={[7.4, -0.43, -8.7]} color="#ff8f70" seed={11.7} />
+        </group>
+      )}
+      {eventType === 'grant' && (
+        <Sparkles
+          count={46}
+          scale={[7, 5, 5]}
+          size={2.1}
+          speed={0.7}
+          color="#fff078"
+          opacity={0.72}
+          position={[6.5, 3.2, 9.8]}
+        />
+      )}
     </group>
   )
 }
@@ -1312,19 +1459,26 @@ function CameraRig({ selectedPlot }) {
   )
 }
 
-function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades, day }) {
-  const skyColor = day % 7 === 0 ? '#79ccef' : '#83d7f7'
+function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades, day, eventType }) {
+  const storm = eventType === 'storm'
+  const skyColor = storm
+    ? '#6f99a6'
+    : eventType === 'kingtide'
+      ? '#70c6e8'
+      : day % 7 === 0
+        ? '#79ccef'
+        : '#83d7f7'
 
   return (
     <>
       <color attach="background" args={[skyColor]} />
       <fog attach="fog" args={[skyColor, 34, 68]} />
-      <ambientLight intensity={1.05} />
-      <hemisphereLight args={['#f3fbff', '#695139', 2.15]} />
+      <ambientLight intensity={storm ? 0.62 : 1.05} />
+      <hemisphereLight args={[storm ? '#bbd4dc' : '#f3fbff', '#695139', storm ? 1.45 : 2.15]} />
       <directionalLight
         castShadow
         position={[14, 22, 9]}
-        intensity={3.45}
+        intensity={storm ? 1.75 : 3.45}
         shadow-mapSize-width={1536}
         shadow-mapSize-height={1536}
         shadow-camera-left={-20}
@@ -1334,7 +1488,7 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
         shadow-bias={-0.0004}
       />
 
-      <Water day={day} />
+      <Water day={day} eventType={eventType} />
       <CoastalTerrain />
       <MudflatDetails />
       <DecorativeMangroves />
@@ -1365,7 +1519,8 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
         opacity={0.25}
         position={[0, 4.2, 0]}
       />
-      <Clouds />
+      <EventAtmosphere eventType={eventType} />
+      <Clouds storm={storm} />
 <CameraRig selectedPlot={selectedPlot} />
     </>
   )
