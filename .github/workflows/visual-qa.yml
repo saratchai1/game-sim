@@ -39,11 +39,13 @@ jobs:
         run: |
           mkdir -p visual-qa
           npx --yes playwright@1.55.0 screenshot \
+            --browser=chromium \
             --viewport-size="1440,900" \
             --wait-for-timeout=7000 \
             http://127.0.0.1:5173 visual-qa/mangrove-bay-3d-desktop.png
           npx --yes playwright@1.55.0 screenshot \
-            --device="iPhone 13" \
+            --browser=chromium \
+            --viewport-size="390,844" \
             --wait-for-timeout=7000 \
             http://127.0.0.1:5173 visual-qa/mangrove-bay-3d-mobile.png
 
