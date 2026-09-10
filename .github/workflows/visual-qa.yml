@@ -1,12 +1,10 @@
 name: Visual QA
 
 on:
-  push:
-    branches:
-      - feat/3d-isometric-world
   pull_request:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
   screenshot:
@@ -37,7 +35,7 @@ jobs:
       - name: Wait for app
         run: npx --yes wait-on@8.0.4 http://127.0.0.1:5173 --timeout 60000
 
-      - name: Capture desktop and mobile with diagnostics
+      - name: Capture screenshots and exercise the core loop
         run: node scripts/visual-qa.mjs
 
       - name: Upload visual QA artifact
