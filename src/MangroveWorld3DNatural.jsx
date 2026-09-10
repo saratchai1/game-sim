@@ -1,6 +1,5 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import {
-  ContactShadows,
   Float,
   Html,
   OrbitControls,
@@ -1029,7 +1028,11 @@ function CameraRig({ selectedPlot }) {
   const focusTarget = useRef(new THREE.Vector3(0, 0.5, 0.6))
 
   useEffect(() => {
-    const responsiveZoom = Math.max(13, Math.min(46, Math.min(size.width / 29, size.height / 22)))
+    const responsiveZoom = size.width < 600
+      ? 22
+      : size.width < 900
+        ? 30
+        : Math.max(30, Math.min(46, Math.min(size.width / 29, size.height / 22)))
     camera.position.set(20, 18, 22)
     camera.zoom = responsiveZoom
     camera.lookAt(0, 0.5, 0.6)
@@ -1123,15 +1126,7 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
         position={[0, 4.2, 0]}
       />
       <Clouds />
-      <ContactShadows
-        position={[0, -0.54, 0]}
-        opacity={0.3}
-        scale={34}
-        blur={2.7}
-        far={16}
-        resolution={256}
-      />
-      <CameraRig selectedPlot={selectedPlot} />
+<CameraRig selectedPlot={selectedPlot} />
     </>
   )
 }
