@@ -149,6 +149,39 @@ function LeafCluster({ position, scale, color }) {
   )
 }
 
+
+function BlueCarbonOrb({ seed = 0 }) {
+  const group = useRef()
+
+  useFrame((state) => {
+    if (!group.current) return
+    const time = state.clock.elapsedTime
+    group.current.position.y = 2.68 + Math.sin(time * 1.6 + seed) * 0.1
+    group.current.rotation.y = time * 0.75 + seed
+    const pulse = 0.9 + Math.sin(time * 2.4 + seed) * 0.08
+    group.current.scale.setScalar(pulse)
+  })
+
+  return (
+    <group ref={group} position={[0, 2.68, 0]}>
+      <mesh castShadow>
+        <octahedronGeometry args={[0.13, 0]} />
+        <meshStandardMaterial
+          color="#62dff0"
+          emissive="#147993"
+          emissiveIntensity={0.9}
+          roughness={0.24}
+          metalness={0.08}
+        />
+      </mesh>
+      <mesh position={[0, -0.2, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[0.18, 0.016, 6, 20]} />
+        <meshBasicMaterial color="#c5fbff" transparent opacity={0.68} depthWrite={false} />
+      </mesh>
+    </group>
+  )
+}
+
 function DeadTree() {
   return (
     <group position={[0, 0.12, 0]}>
@@ -179,11 +212,14 @@ function MangroveTree({ plot, plotId }) {
   const group = useRef()
   const look = SPECIES_LOOK[plot.species] || SPECIES_LOOK.rhizophora
   const stageScale = plot.age < 1 ? 0.35 : plot.age < 3 ? 0.58 : plot.age < 6 ? 0.82 : 1
+  const growthScale = useRef(plot.age === 0 ? 0.12 : stageScale)
   const healthScale = 0.8 + (Math.max(plot.health, 10) / 100) * 0.2
   const seed = plotId * 17
 
-  useFrame((state) => {
+  useFrame((state, delta) => {
     if (!group.current || plot.dead) return
+    growthScale.current = THREE.MathUtils.damp(growthScale.current, stageScale, 5.8, delta)
+    group.current.scale.setScalar(growthScale.current)
     group.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.85 + seed) * 0.018
     group.current.rotation.x = Math.cos(state.clock.elapsedTime * 0.66 + seed) * 0.011
   })
@@ -216,7 +252,7 @@ function MangroveTree({ plot, plotId }) {
       ref={group}
       position={[0, 0.07, 0]}
       rotation={[0, pseudo(seed) * Math.PI * 2, 0]}
-      scale={stageScale}
+      scale={growthScale.current}
     >
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]}>
         <circleGeometry args={[0.95, 24]} />
@@ -277,6 +313,8 @@ function MangroveTree({ plot, plotId }) {
           ))}
         </group>
       )}
+
+      {plot.age >= 6 && plot.health >= 70 && <BlueCarbonOrb seed={seed} />}
     </group>
   )
 }
@@ -526,7 +564,7 @@ function suitabilityLocal(plot, speciesKey) {
   return Number(rules.tides.includes(plot.tide)) + Number(rules.soils.includes(plot.soil))
 }
 
-function Water({ day }) {
+function Water({ day, eventType }) {
   const group = useRef()
   const ripples = useMemo(() => (
     Array.from({ length: 22 }, (_, index) => ({
@@ -538,10 +576,13 @@ function Water({ day }) {
   ), [])
 
   const tideOffset = [-0.08, -0.01, 0.11, 0.01][(Math.max(1, day) - 1) % 4]
+  const eventOffset = eventType === 'kingtide' ? 0.16 : 0
+  const stormChop = eventType === 'storm' ? 0.045 : 0.022
 
   useFrame((state) => {
     if (group.current) {
-      group.current.position.y = -0.58 + tideOffset + Math.sin(state.clock.elapsedTime * 0.55) * 0.022
+      group.current.position.y = -0.58 + tideOffset + eventOffset
+        + Math.sin(state.clock.elapsedTime * (eventType === 'storm' ? 1.2 : 0.55)) * stormChop
     }
   })
 
@@ -576,9 +617,57 @@ function WaterChannel({ points, radius = 0.44 }) {
   useEffect(() => () => geometry.dispose(), [geometry])
 
   return (
-    <mesh geometry={geometry} scale={[1, 0.12, 1]} position={[0, 0.22, 0]} receiveShadow>
-      <meshStandardMaterial color="#45b5cc" roughness={0.24} transparent opacity={0.9} />
-    </mesh>
+    <group>
+      <mesh
+        geometry={geometry}
+        scale={[1.12, 0.022, 1.12]}
+        position={[0, 0.448, 0]}
+        renderOrder={2}
+      >
+        <meshStandardMaterial
+          color="#6b5542"
+          roughness={1}
+          transparent
+          opacity={0.46}
+          depthWrite={false}
+          polygonOffset
+          polygonOffsetFactor={-1}
+        />
+      </mesh>
+      <mesh
+        geometry={geometry}
+        scale={[1, 0.018, 1]}
+        position={[0, 0.472, 0]}
+        renderOrder={3}
+      >
+        <meshStandardMaterial
+          color="#52bfd1"
+          emissive="#0e6475"
+          emissiveIntensity={0.08}
+          roughness={0.22}
+          transparent
+          opacity={0.88}
+          depthWrite={false}
+          polygonOffset
+          polygonOffsetFactor={-3}
+        />
+      </mesh>
+      <mesh
+        geometry={geometry}
+        scale={[0.7, 0.006, 0.7]}
+        position={[0, 0.486, 0]}
+        renderOrder={4}
+      >
+        <meshBasicMaterial
+          color="#e1fbff"
+          transparent
+          opacity={0.18}
+          depthWrite={false}
+          polygonOffset
+          polygonOffsetFactor={-5}
+        />
+      </mesh>
+    </group>
   )
 }
 
@@ -643,9 +732,9 @@ function CoastalTerrain() {
       <mesh geometry={shoreGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 1.19, 0]} receiveShadow>
         <meshStandardMaterial color="#c9a166" roughness={0.98} />
       </mesh>
-      <WaterChannel points={channelA} radius={0.48} />
-      <WaterChannel points={channelB} radius={0.42} />
-      <WaterChannel points={channelC} radius={0.46} />
+      <WaterChannel points={channelA} radius={0.34} />
+      <WaterChannel points={channelB} radius={0.3} />
+      <WaterChannel points={channelC} radius={0.33} />
       <Boardwalk points={mainWalk} width={0.82} />
       <Boardwalk points={crossWalk} width={0.7} />
       <ReedBeds />
@@ -1149,7 +1238,7 @@ function CoastalBarriers({ plots, communityLevel }) {
   )
 }
 
-function Clouds() {
+function Clouds({ storm = false }) {
   const clouds = [
     [-11, 8.5, -10, 1.25], [7, 9.5, -12, 1], [14, 7.6, 3, 0.78], [-3, 10, 14, 0.9],
   ]
@@ -1164,12 +1253,156 @@ function Clouds() {
             ].map(([cx, cy, cz, sphereScale], cloudIndex) => (
               <mesh key={cloudIndex} position={[cx, cy, cz]} scale={sphereScale}>
                 <sphereGeometry args={[0.8, 14, 10]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.96} transparent opacity={0.92} />
+                <meshStandardMaterial
+                  color={storm ? '#a8bcc4' : '#ffffff'}
+                  roughness={0.96}
+                  transparent
+                  opacity={storm ? 0.98 : 0.92}
+                />
               </mesh>
             ))}
           </group>
         </Float>
       ))}
+    </group>
+  )
+}
+
+
+function RainField() {
+  const group = useRef()
+  const drops = useMemo(() => (
+    Array.from({ length: 72 }, (_, index) => ({
+      x: -18 + pseudo(index * 4.7 + 3) * 36,
+      y: 1.5 + pseudo(index * 7.3 + 8) * 12,
+      z: -13 + pseudo(index * 9.1 + 11) * 28,
+      length: 0.24 + pseudo(index * 2.3 + 17) * 0.34,
+      speed: 5.5 + pseudo(index * 3.8 + 23) * 3.8,
+    }))
+  ), [])
+
+  useFrame((_, delta) => {
+    if (!group.current) return
+    group.current.children.forEach((drop, index) => {
+      drop.position.y -= delta * drop.userData.speed
+      drop.position.x += delta * 0.65
+      if (drop.position.y < -0.4) {
+        const source = drops[index]
+        drop.position.set(source.x - 2.5, 11.5 + pseudo(index * 6.2) * 3.5, source.z)
+      }
+    })
+  })
+
+  return (
+    <group ref={group}>
+      {drops.map((drop, index) => (
+        <mesh
+          key={index}
+          position={[drop.x, drop.y, drop.z]}
+          rotation={[0, 0, -0.18]}
+          userData={{ speed: drop.speed }}
+        >
+          <boxGeometry args={[0.018, drop.length, 0.018]} />
+          <meshBasicMaterial color="#d9f5ff" transparent opacity={0.58} depthWrite={false} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+function FloatingTrash() {
+  const pieces = useMemo(() => (
+    Array.from({ length: 14 }, (_, index) => ({
+      x: -12 + pseudo(index * 5.2 + 1) * 24,
+      z: -11 + pseudo(index * 8.4 + 5) * 8,
+      rotation: pseudo(index * 7.8 + 3) * Math.PI,
+      color: ['#e9f2e9', '#ef8a6c', '#f4d35e', '#72bfd4'][index % 4],
+      scale: 0.65 + pseudo(index * 3.3) * 0.6,
+    }))
+  ), [])
+
+  return (
+    <group>
+      {pieces.map((piece, index) => (
+        <Float key={index} speed={0.8 + (index % 3) * 0.2} rotationIntensity={0.28} floatIntensity={0.12}>
+          <mesh
+            position={[piece.x, -0.43, piece.z]}
+            rotation={[0.3, piece.rotation, 0.2]}
+            scale={piece.scale}
+          >
+            {index % 3 === 0
+              ? <cylinderGeometry args={[0.055, 0.075, 0.32, 7]} />
+              : <boxGeometry args={[0.18, 0.045, 0.12]} />}
+            <meshStandardMaterial color={piece.color} roughness={0.72} transparent opacity={0.9} />
+          </mesh>
+        </Float>
+      ))}
+    </group>
+  )
+}
+
+function KingTideFoam() {
+  const rings = useMemo(() => (
+    Array.from({ length: 18 }, (_, index) => ({
+      x: -13 + pseudo(index * 4.1 + 2) * 26,
+      z: -10.5 + pseudo(index * 7.4 + 9) * 5,
+      scale: 0.45 + pseudo(index * 2.7 + 6) * 0.8,
+      rotation: pseudo(index * 3.5 + 12) * Math.PI,
+    }))
+  ), [])
+
+  return (
+    <group>
+      {rings.map((ring, index) => (
+        <Float key={index} speed={0.8 + (index % 4) * 0.1} rotationIntensity={0} floatIntensity={0.12}>
+          <mesh
+            position={[ring.x, -0.22, ring.z]}
+            rotation={[-Math.PI / 2, 0, ring.rotation]}
+            scale={[ring.scale * 1.7, ring.scale, 1]}
+          >
+            <torusGeometry args={[0.34, 0.025, 6, 24, Math.PI * 1.45]} />
+            <meshBasicMaterial color="#e8fdff" transparent opacity={0.6} depthWrite={false} />
+          </mesh>
+        </Float>
+      ))}
+    </group>
+  )
+}
+
+function EventAtmosphere({ eventType }) {
+  if (!eventType) return null
+
+  return (
+    <group>
+      {eventType === 'storm' && <RainField />}
+      {eventType === 'trash' && <FloatingTrash />}
+      {eventType === 'kingtide' && <KingTideFoam />}
+      {eventType === 'wildlife' && (
+        <group>
+          <Bird seed={5.4} />
+          <Bird seed={7.1} />
+          <Crab position={[-5.4, 0.47, -7.5]} seed={8} />
+          <Crab position={[4.2, 0.47, -6.8]} seed={9} />
+        </group>
+      )}
+      {eventType === 'fishers' && (
+        <group>
+          <Fish position={[-6.2, -0.42, -10.2]} color="#ffd166" seed={9.1} />
+          <Fish position={[1.1, -0.44, -9.8]} color="#8ee0dd" seed={10.4} />
+          <Fish position={[7.4, -0.43, -8.7]} color="#ff8f70" seed={11.7} />
+        </group>
+      )}
+      {eventType === 'grant' && (
+        <Sparkles
+          count={46}
+          scale={[7, 5, 5]}
+          size={2.1}
+          speed={0.7}
+          color="#fff078"
+          opacity={0.72}
+          position={[6.5, 3.2, 9.8]}
+        />
+      )}
     </group>
   )
 }
@@ -1182,9 +1415,9 @@ function CameraRig({ selectedPlot }) {
 
   useEffect(() => {
     const responsiveZoom = size.width < 600
-      ? 22
+      ? 26
       : size.width < 900
-        ? 30
+        ? 32
         : Math.max(30, Math.min(46, Math.min(size.width / 29, size.height / 22)))
     camera.position.set(20, 18, 22)
     camera.zoom = responsiveZoom
@@ -1226,19 +1459,26 @@ function CameraRig({ selectedPlot }) {
   )
 }
 
-function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades, day }) {
-  const skyColor = day % 7 === 0 ? '#79ccef' : '#83d7f7'
+function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades, day, eventType }) {
+  const storm = eventType === 'storm'
+  const skyColor = storm
+    ? '#6f99a6'
+    : eventType === 'kingtide'
+      ? '#70c6e8'
+      : day % 7 === 0
+        ? '#79ccef'
+        : '#83d7f7'
 
   return (
     <>
       <color attach="background" args={[skyColor]} />
       <fog attach="fog" args={[skyColor, 34, 68]} />
-      <ambientLight intensity={1.05} />
-      <hemisphereLight args={['#f3fbff', '#695139', 2.15]} />
+      <ambientLight intensity={storm ? 0.62 : 1.05} />
+      <hemisphereLight args={[storm ? '#bbd4dc' : '#f3fbff', '#695139', storm ? 1.45 : 2.15]} />
       <directionalLight
         castShadow
         position={[14, 22, 9]}
-        intensity={3.45}
+        intensity={storm ? 1.75 : 3.45}
         shadow-mapSize-width={1536}
         shadow-mapSize-height={1536}
         shadow-camera-left={-20}
@@ -1248,7 +1488,7 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
         shadow-bias={-0.0004}
       />
 
-      <Water day={day} />
+      <Water day={day} eventType={eventType} />
       <CoastalTerrain />
       <MudflatDetails />
       <DecorativeMangroves />
@@ -1279,7 +1519,8 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
         opacity={0.25}
         position={[0, 4.2, 0]}
       />
-      <Clouds />
+      <EventAtmosphere eventType={eventType} />
+      <Clouds storm={storm} />
 <CameraRig selectedPlot={selectedPlot} />
     </>
   )
