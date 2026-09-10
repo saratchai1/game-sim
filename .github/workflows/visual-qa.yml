@@ -44,6 +44,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: mangrove-bay-3d-visual-qa
-          path: visual-qa/*
+          path: |
+            visual-qa/*
+            src/MangroveWorld3DNatural.jsx
           if-no-files-found: error
           retention-days: 7
