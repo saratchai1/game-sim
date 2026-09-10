@@ -1,4 +1,4 @@
-# Mangrove Bay — Blue Carbon Restoration Game
+# Mangrove Bay — Blue Carbon Restoration Game v1.0
 
 เกมจำลองการฟื้นฟูป่าชายเลนแบบ cozy management / farm game ผู้เล่นเลือกพันธุ์ไม้ให้เหมาะกับพื้นที่ ดูแลอัตรารอด สร้าง Carbon Value และ Non-carbon Benefit แล้วพัฒนาโครงการจนผ่าน **Living Coast Standard** ภายในเกม
 
@@ -16,16 +16,13 @@
 8. รักษา **Biodiversity + Community + Coastal resilience** ให้สมดุล
 9. ทำเงื่อนไข Living Coast Standard ให้ครบเพื่อจบ campaign
 
-## Finished gameplay features
+## v1.0 gameplay
 
 - 16 restoration plots พร้อม tide / soil suitability
 - 3 mangrove species และ gameplay trait ต่างกัน
 - Growth stages: seedling → young → mature
-- Health, survival และ failed planting
-- Plot maintenance และ replanting
-- Estimated carbon accumulation
-- Drone + Field MRV และ verification factor
-- Verified Carbon Credit inventory
+- Health, survival, failed planting, maintenance และ replanting
+- Estimated Carbon → Drone + Field MRV → Verified Carbon Credit
 - Carbon market พร้อมราคาที่เปลี่ยนรายวัน
 - รายได้ชุมชนเมื่อ Community score พัฒนา
 - Biodiversity, Community และ Coastal-resilience impact system
@@ -36,7 +33,7 @@
 - 6 achievements
 - Living Coast Standard จำนวน 7 เงื่อนไข
 - End-game result / Project Grade และ Sandbox หลังจบเกม
-- Emergency recovery grant เพื่อป้องกัน save ติดทางตัน
+- Emergency recovery grant ป้องกัน save ติดทางตัน
 - First-play tutorial และ replay tutorial
 - Field activity log
 - Browser local autosave พร้อม migration จาก save v1
@@ -70,15 +67,15 @@ Production build check:
 npm run build
 ```
 
-## Development branch
+## Branch / deployment
 
-ตัวเกมฉบับปัจจุบันอยู่ที่:
+ตัวเกม v1.0 อยู่ที่:
 
 `feat/mangrove-blue-carbon-mvp`
 
 PR: `#1`
 
-**ยังไม่มีการตั้งค่า deploy จากงานนี้ และยังไม่ควร deploy / merge เข้า `main` จนกว่าจะต้องการให้ production integration ทำงาน**
+**งานนี้ไม่ได้ deploy ไป Vercel และยังไม่ merge เข้า `main`** เพื่อไม่ให้ Git integration trigger production deployment โดยไม่ได้ตั้งใจ
 
 ## Simulation disclaimer
 
