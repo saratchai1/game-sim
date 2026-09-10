@@ -1,9 +1,9 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
-import './styles.css'
-import './hayday-theme.css'
-import './game-complete.css'
+import './three-world.css'
+import './three-world-hotfix.css'
+import './three-world-natural.css'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

@@ -1,0 +1,49 @@
+name: Visual QA
+
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install app dependencies
+        run: npm install
+
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Start Vite server
+        run: |
+          npm run dev -- --host 127.0.0.1 > /tmp/game-sim-vite.log 2>&1 &
+          echo $! > /tmp/game-sim-vite.pid
+
+      - name: Wait for app
+        run: npx --yes wait-on@8.0.4 http://127.0.0.1:5173 --timeout 60000
+
+      - name: Capture screenshots and exercise the core loop
+        run: node scripts/visual-qa.mjs
+
+      - name: Upload visual QA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mangrove-bay-3d-visual-qa
+          path: |
+            visual-qa/*
+            src/MangroveWorld3DNatural.jsx
+          if-no-files-found: error
+          retention-days: 7

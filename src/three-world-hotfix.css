@@ -1,0 +1,21 @@
+/* Orthographic drei <Html> labels were being rendered at an extreme scale in
+   headless and some GPU/browser combinations, covering the entire game.
+   The HUD already exposes this information, so hide the in-world DOM labels
+   and keep the WebGL scene below the interface layer. */
+.world-canvas {
+  z-index: 0 !important;
+}
+
+.world-canvas canvas {
+  z-index: 0 !important;
+}
+
+.game-ui {
+  z-index: 20 !important;
+}
+
+.plot-world-label,
+.building-world-label,
+.tide-world-tag {
+  display: none !important;
+}
