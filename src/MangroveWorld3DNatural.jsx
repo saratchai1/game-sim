@@ -362,6 +362,14 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
   const radiusZ = 0.95 + pseudo(plot.id * 6.7) * 0.13
   const innerShape = useMemo(() => makeIrregularShape(radiusX, radiusZ, plot.id * 3.17), [plot.id, radiusX, radiusZ])
   const outerShape = useMemo(() => makeIrregularShape(radiusX + 0.09, radiusZ + 0.09, plot.id * 3.17), [plot.id, radiusX, radiusZ])
+  const innerGeometry = useMemo(() => new THREE.ShapeGeometry(innerShape, 16), [innerShape])
+  const outerGeometry = useMemo(() => new THREE.ShapeGeometry(outerShape, 16), [outerShape])
+
+  useEffect(() => () => {
+    innerGeometry.dispose()
+    outerGeometry.dispose()
+  }, [innerGeometry, outerGeometry])
+
   const occupied = Boolean(plot.species)
   const fit = suitabilityLocal(plot, plot.species || activeSpecies)
   const borderColor = selected ? '#fff27b' : fit === 2 ? '#79bf4d' : fit === 1 ? '#e4b75f' : '#9a6a51'
@@ -391,7 +399,7 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
         document.body.style.cursor = 'default'
       }}
     >
-      <mesh geometry={new THREE.ShapeGeometry(outerShape, 16)} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, 0]} receiveShadow>
+      <mesh geometry={outerGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, 0]} receiveShadow>
         <meshStandardMaterial
           color={borderColor}
           emissive={selected ? '#735100' : hovered ? '#493300' : '#000000'}
@@ -399,7 +407,7 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
           roughness={0.82}
         />
       </mesh>
-      <mesh geometry={new THREE.ShapeGeometry(innerShape, 16)} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]} receiveShadow>
+      <mesh geometry={innerGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]} receiveShadow>
         <meshStandardMaterial color={plot.dead ? '#8f725b' : soilColor} roughness={0.98} />
       </mesh>
 
@@ -551,17 +559,20 @@ function CoastalTerrain() {
   const mudflat = useMemo(() => MUDFLAT_POINTS, [])
   const mainland = useMemo(() => MAINLAND_POINTS, [])
   const shore = useMemo(() => SHORE_POINTS, [])
+  const shoreGeometry = useMemo(() => new THREE.ShapeGeometry(makeShape(shore), 32), [shore])
   const channelA = useMemo(() => [[-11.8, -7.6], [-8.4, -4.3], [-7.2, -0.4], [-8.3, 3.4], [-10.4, 6.2]], [])
   const channelB = useMemo(() => [[-2.5, -9.8], [-2.0, -6.4], [-3.2, -2.6], [-2.5, 1.8], [-1.4, 6.6]], [])
   const channelC = useMemo(() => [[9.0, -7.8], [7.1, -4.8], [7.9, -0.8], [7.2, 3.0], [9.2, 6.2]], [])
   const mainWalk = useMemo(() => [[-10.2, 7.5], [-8.1, 5.5], [-5.8, 4.4], [-3.5, 3.2], [-0.7, 2.4]], [])
   const crossWalk = useMemo(() => [[-3.5, 3.2], [-1.7, 0.5], [1.2, -1.7], [4.5, -3.2]], [])
 
+  useEffect(() => () => shoreGeometry.dispose(), [shoreGeometry])
+
   return (
     <group>
       <ExtrudedGround points={mudflat} color="#806247" topY={0.36} depth={0.46} />
       <ExtrudedGround points={mainland} color="#67b84e" topY={1.16} depth={0.9} />
-      <mesh geometry={new THREE.ShapeGeometry(makeShape(shore), 32)} rotation={[-Math.PI / 2, 0, 0]} position={[0, 1.19, 0]} receiveShadow>
+      <mesh geometry={shoreGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 1.19, 0]} receiveShadow>
         <meshStandardMaterial color="#c9a166" roughness={0.98} />
       </mesh>
       <WaterChannel points={channelA} radius={0.48} />
