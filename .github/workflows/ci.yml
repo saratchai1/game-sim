@@ -1,22 +1,53 @@
-name: CI
+name: Finalize 3D Next
 
 on:
-  pull_request:
+  push:
     branches:
-      - main
-  workflow_dispatch:
+      - feat/3d-next
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  finalize:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - name: Checkout
+      - name: Checkout branch
         uses: actions/checkout@v4
+        with:
+          ref: feat/3d-next
+          fetch-depth: 0
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 24
-      - name: Install dependencies
-        run: npm install
-      - name: Build
-        run: npm run build
+
+      - name: Reconstruct exact source files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .tmp/world.part1 .tmp/world.part2 | base64 -d | gzip -d > src/MangroveWorld3DNatural.jsx
+          cat .tmp/lock.part1 .tmp/lock.part2 .tmp/lock.part3 | base64 -d | gzip -d > package-lock.json
+          test "$(git hash-object src/MangroveWorld3DNatural.jsx)" = "f50962b06ef155dfbb08a5f137db18925c3218a0"
+          test "$(git hash-object package-lock.json)" = "940b73bfb83b8a7cfbb101545224ce9bcb5db8c8"
+
+      - name: Test source
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Commit final source and remove staging files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .tmp
+          git fetch origin main
+          git checkout origin/main -- .github/workflows/ci.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: finalize 3d-next source from 394fffd"
+          git push origin HEAD:feat/3d-next
