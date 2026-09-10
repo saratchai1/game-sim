@@ -1,0 +1,103 @@
+name: Optimize Three.js geometry lifecycle
+
+on:
+  push:
+    branches:
+      - feat/3d-isometric-world
+    paths:
+      - .github/workflows/optimize-three-geometries.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/3d-isometric-world
+          fetch-depth: 0
+
+      - name: Memoize and dispose generated geometry
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/MangroveWorld3DNatural.jsx')
+          code = path.read_text()
+
+          plot_anchor = """  const innerShape = useMemo(() => makeIrregularShape(radiusX, radiusZ, plot.id * 3.17), [plot.id, radiusX, radiusZ])
+            const outerShape = useMemo(() => makeIrregularShape(radiusX + 0.09, radiusZ + 0.09, plot.id * 3.17), [plot.id, radiusX, radiusZ])
+            const occupied = Boolean(plot.species)
+          """
+          plot_replacement = """  const innerShape = useMemo(() => makeIrregularShape(radiusX, radiusZ, plot.id * 3.17), [plot.id, radiusX, radiusZ])
+            const outerShape = useMemo(() => makeIrregularShape(radiusX + 0.09, radiusZ + 0.09, plot.id * 3.17), [plot.id, radiusX, radiusZ])
+            const innerGeometry = useMemo(() => new THREE.ShapeGeometry(innerShape, 16), [innerShape])
+            const outerGeometry = useMemo(() => new THREE.ShapeGeometry(outerShape, 16), [outerShape])
+
+            useEffect(() => () => {
+              innerGeometry.dispose()
+              outerGeometry.dispose()
+            }, [innerGeometry, outerGeometry])
+
+            const occupied = Boolean(plot.species)
+          """
+          if plot_anchor not in code:
+              raise SystemExit('Plot geometry anchor not found')
+          code = code.replace(plot_anchor, plot_replacement, 1)
+
+          old_outer = '<mesh geometry={new THREE.ShapeGeometry(outerShape, 16)} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, 0]} receiveShadow>'
+          new_outer = '<mesh geometry={outerGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, 0]} receiveShadow>'
+          old_inner = '<mesh geometry={new THREE.ShapeGeometry(innerShape, 16)} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]} receiveShadow>'
+          new_inner = '<mesh geometry={innerGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]} receiveShadow>'
+          if old_outer not in code or old_inner not in code:
+              raise SystemExit('Inline plot geometries not found')
+          code = code.replace(old_outer, new_outer, 1).replace(old_inner, new_inner, 1)
+
+          shore_anchor = """  const shore = useMemo(() => SHORE_POINTS, [])
+            const channelA = useMemo(() => [[-11.8, -7.6], [-8.4, -4.3], [-7.2, -0.4], [-8.3, 3.4], [-10.4, 6.2]], [])
+          """
+          shore_replacement = """  const shore = useMemo(() => SHORE_POINTS, [])
+            const shoreGeometry = useMemo(() => new THREE.ShapeGeometry(makeShape(shore), 32), [shore])
+            const channelA = useMemo(() => [[-11.8, -7.6], [-8.4, -4.3], [-7.2, -0.4], [-8.3, 3.4], [-10.4, 6.2]], [])
+          """
+          if shore_anchor not in code:
+              raise SystemExit('Shore geometry anchor not found')
+          code = code.replace(shore_anchor, shore_replacement, 1)
+
+          walk_anchor = """  const crossWalk = useMemo(() => [[-3.5, 3.2], [-1.7, 0.5], [1.2, -1.7], [4.5, -3.2]], [])
+
+            return (
+          """
+          walk_replacement = """  const crossWalk = useMemo(() => [[-3.5, 3.2], [-1.7, 0.5], [1.2, -1.7], [4.5, -3.2]], [])
+
+            useEffect(() => () => shoreGeometry.dispose(), [shoreGeometry])
+
+            return (
+          """
+          if walk_anchor not in code:
+              raise SystemExit('Coastal terrain cleanup anchor not found')
+          code = code.replace(walk_anchor, walk_replacement, 1)
+
+          old_shore = '<mesh geometry={new THREE.ShapeGeometry(makeShape(shore), 32)} rotation={[-Math.PI / 2, 0, 0]} position={[0, 1.19, 0]} receiveShadow>'
+          new_shore = '<mesh geometry={shoreGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 1.19, 0]} receiveShadow>'
+          if old_shore not in code:
+              raise SystemExit('Inline shore geometry not found')
+          code = code.replace(old_shore, new_shore, 1)
+
+          if 'geometry={new THREE.ShapeGeometry' in code:
+              raise SystemExit('Inline ShapeGeometry still remains')
+          if 'innerGeometry.dispose()' not in code or 'shoreGeometry.dispose()' not in code:
+              raise SystemExit('Geometry disposal was not added')
+
+          path.write_text(code)
+          PY
+
+      - name: Commit optimization
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/MangroveWorld3DNatural.jsx
+          git commit -m "perf: dispose generated Three.js plot geometry"
+          git push origin HEAD:feat/3d-isometric-world
