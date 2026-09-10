@@ -24,8 +24,10 @@ jobs:
       - name: Install app dependencies
         run: npm install
 
-      - name: Install Playwright Chromium
-        run: npx --yes playwright@1.55.0 install --with-deps chromium
+      - name: Install Playwright and Chromium
+        run: |
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
 
       - name: Start Vite server
         run: |
@@ -35,24 +37,13 @@ jobs:
       - name: Wait for app
         run: npx --yes wait-on@8.0.4 http://127.0.0.1:5173 --timeout 60000
 
-      - name: Capture desktop and mobile
-        run: |
-          mkdir -p visual-qa
-          npx --yes playwright@1.55.0 screenshot \
-            --browser=chromium \
-            --viewport-size="1440,900" \
-            --wait-for-timeout=7000 \
-            http://127.0.0.1:5173 visual-qa/mangrove-bay-3d-desktop.png
-          npx --yes playwright@1.55.0 screenshot \
-            --browser=chromium \
-            --viewport-size="390,844" \
-            --wait-for-timeout=7000 \
-            http://127.0.0.1:5173 visual-qa/mangrove-bay-3d-mobile.png
+      - name: Capture desktop and mobile with diagnostics
+        run: node scripts/visual-qa.mjs
 
-      - name: Upload screenshots
+      - name: Upload visual QA artifact
         uses: actions/upload-artifact@v4
         with:
           name: mangrove-bay-3d-visual-qa
-          path: visual-qa/*.png
+          path: visual-qa/*
           if-no-files-found: error
           retention-days: 7
