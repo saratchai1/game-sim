@@ -1,0 +1,42 @@
+name: Fix 3D plot elevation
+
+on:
+  push:
+    branches:
+      - feat/3d-isometric-world
+    paths:
+      - .github/workflows/fix-plot-elevation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/3d-isometric-world
+          fetch-depth: 0
+
+      - name: Raise interactive plots above terrain
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/MangroveWorld3D.jsx')
+          text = path.read_text()
+          old = "return [PLOT_X[index % 4], 0.15, PLOT_Z[Math.floor(index / 4)]]"
+          new = "return [PLOT_X[index % 4], 0.62, PLOT_Z[Math.floor(index / 4)]]"
+          if old not in text:
+              raise SystemExit('Expected plot-position line not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/MangroveWorld3D.jsx
+          git commit -m "fix: raise planting plots above terrain"
+          git push origin HEAD:feat/3d-isometric-world
