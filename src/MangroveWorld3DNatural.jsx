@@ -293,12 +293,14 @@ function EmptyPlotMarker({ activeSpecies, hovered }) {
   return (
     <group position={[0, 0.08, 0]}>
       <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.34, 0.045, 8, 24]} />
+        <torusGeometry args={[0.27, 0.035, 8, 24]} />
         <meshStandardMaterial
           color={hovered ? '#fff8b5' : '#f7d45c'}
           emissive="#efb72d"
           emissiveIntensity={hovered ? 0.55 : 0.16}
           roughness={0.45}
+          transparent
+          opacity={hovered ? 1 : 0.74}
         />
       </mesh>
       <mesh position={[0, 0.28, 0]} castShadow>
@@ -313,6 +315,51 @@ function EmptyPlotMarker({ activeSpecies, hovered }) {
         <sphereGeometry args={[0.12, 8, 5]} />
         <meshStandardMaterial color={look.leaf} />
       </mesh>
+    </group>
+  )
+}
+
+
+function PlantingBurst({ seed = 0 }) {
+  const group = useRef()
+  const elapsed = useRef(0)
+  const particles = useMemo(() => (
+    Array.from({ length: 9 }, (_, index) => {
+      const angle = (Math.PI * 2 * index) / 9 + pseudo(seed * 5.1) * 0.4
+      return {
+        x: Math.cos(angle) * (0.55 + pseudo(seed + index * 4.7) * 0.35),
+        z: Math.sin(angle) * (0.55 + pseudo(seed + index * 7.1) * 0.35),
+        lift: 0.38 + pseudo(seed + index * 2.9) * 0.42,
+        color: index % 3 === 0 ? '#fff0a2' : index % 3 === 1 ? '#8be16a' : '#65d7e8',
+      }
+    })
+  ), [seed])
+
+  useFrame((_, delta) => {
+    if (!group.current) return
+    elapsed.current += delta
+    const progress = Math.min(1, elapsed.current / 1.45)
+    group.current.visible = progress < 1
+    group.current.children.forEach((child, index) => {
+      const particle = particles[index]
+      child.position.set(
+        particle.x * progress,
+        0.16 + Math.sin(progress * Math.PI) * particle.lift,
+        particle.z * progress,
+      )
+      child.scale.setScalar(0.72 + Math.sin(progress * Math.PI) * 0.7)
+      child.material.opacity = Math.max(0, 1 - progress)
+    })
+  })
+
+  return (
+    <group ref={group} position={[0, 0.12, 0]}>
+      {particles.map((particle, index) => (
+        <mesh key={index}>
+          <sphereGeometry args={[0.075, 7, 5]} />
+          <meshBasicMaterial color={particle.color} transparent opacity={1} depthWrite={false} />
+        </mesh>
+      ))}
     </group>
   )
 }
@@ -358,8 +405,8 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
   const [hovered, setHovered] = useState(false)
   const position = plotPosition(plot.id)
   const rotation = (pseudo(plot.id * 8.4) - 0.5) * 0.28
-  const radiusX = 1.28 + pseudo(plot.id * 4.1) * 0.16
-  const radiusZ = 0.95 + pseudo(plot.id * 6.7) * 0.13
+  const radiusX = 0.92 + pseudo(plot.id * 4.1) * 0.12
+  const radiusZ = 0.7 + pseudo(plot.id * 6.7) * 0.1
   const innerShape = useMemo(() => makeIrregularShape(radiusX, radiusZ, plot.id * 3.17), [plot.id, radiusX, radiusZ])
   const outerShape = useMemo(() => makeIrregularShape(radiusX + 0.09, radiusZ + 0.09, plot.id * 3.17), [plot.id, radiusX, radiusZ])
   const innerGeometry = useMemo(() => new THREE.ShapeGeometry(innerShape, 16), [innerShape])
@@ -399,17 +446,29 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
         document.body.style.cursor = 'default'
       }}
     >
-      <mesh geometry={outerGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.006, 0]} receiveShadow>
-        <meshStandardMaterial
-          color={borderColor}
-          emissive={selected ? '#735100' : hovered ? '#493300' : '#000000'}
-          emissiveIntensity={selected ? 0.5 : hovered ? 0.2 : 0}
-          roughness={0.82}
-        />
-      </mesh>
-      <mesh geometry={innerGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.025, 0]} receiveShadow>
-        <meshStandardMaterial color={plot.dead ? '#8f725b' : soilColor} roughness={0.98} />
-      </mesh>
+      {(selected || hovered) && (
+        <mesh geometry={outerGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.032, 0]}>
+          <meshBasicMaterial
+            color={borderColor}
+            transparent
+            opacity={selected ? 0.78 : 0.38}
+            depthWrite={false}
+          />
+        </mesh>
+      )}
+      {(!occupied || selected || hovered || plot.dead) && (
+        <mesh geometry={innerGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.038, 0]} receiveShadow>
+          <meshStandardMaterial
+            color={plot.dead ? '#705747' : soilColor}
+            roughness={1}
+            transparent
+            opacity={plot.dead ? 0.55 : selected ? 0.36 : hovered ? 0.25 : 0.12}
+            depthWrite={false}
+            polygonOffset
+            polygonOffsetFactor={-1}
+          />
+        </mesh>
+      )}
 
       {Array.from({ length: plot.tide === 'สูง' ? 5 : plot.tide === 'กลาง' ? 3 : 2 }, (_, index) => {
         const angle = (Math.PI * 2 * index) / 5 + plot.id
@@ -438,13 +497,18 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
         )}
       </group>
 
-      {occupied
-        ? <MangroveTree plot={plot} plotId={plot.id} />
-        : <EmptyPlotMarker activeSpecies={activeSpecies} hovered={hovered} />}
+      {occupied ? (
+        <>
+          <MangroveTree plot={plot} plotId={plot.id} />
+          {plot.age === 0 && !plot.dead && <PlantingBurst seed={plot.id} />}
+        </>
+      ) : (
+        <EmptyPlotMarker activeSpecies={activeSpecies} hovered={hovered} />
+      )}
       {selected && <SelectionMarker />}
 
       <mesh position={[0, 0.7, 0]} visible={false}>
-        <cylinderGeometry args={[Math.max(radiusX, radiusZ), Math.max(radiusX, radiusZ), 1.7, 12]} />
+        <cylinderGeometry args={[Math.max(radiusX, radiusZ) + 0.55, Math.max(radiusX, radiusZ) + 0.55, 1.8, 14]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
     </group>
@@ -462,7 +526,7 @@ function suitabilityLocal(plot, speciesKey) {
   return Number(rules.tides.includes(plot.tide)) + Number(rules.soils.includes(plot.soil))
 }
 
-function Water() {
+function Water({ day }) {
   const group = useRef()
   const ripples = useMemo(() => (
     Array.from({ length: 22 }, (_, index) => ({
@@ -473,8 +537,12 @@ function Water() {
     }))
   ), [])
 
+  const tideOffset = [-0.08, -0.01, 0.11, 0.01][(Math.max(1, day) - 1) % 4]
+
   useFrame((state) => {
-    if (group.current) group.current.position.y = -0.58 + Math.sin(state.clock.elapsedTime * 0.55) * 0.022
+    if (group.current) {
+      group.current.position.y = -0.58 + tideOffset + Math.sin(state.clock.elapsedTime * 0.55) * 0.022
+    }
   })
 
   return (
@@ -581,6 +649,76 @@ function CoastalTerrain() {
       <Boardwalk points={mainWalk} width={0.82} />
       <Boardwalk points={crossWalk} width={0.7} />
       <ReedBeds />
+    </group>
+  )
+}
+
+
+function MudflatDetails() {
+  const details = useMemo(() => (
+    Array.from({ length: 46 }, (_, index) => ({
+      x: -11.4 + pseudo(index * 5.33 + 2) * 22.8,
+      z: -8.6 + pseudo(index * 8.19 + 9) * 14.1,
+      scale: 0.45 + pseudo(index * 2.17 + 4) * 0.8,
+      type: index % 4,
+      rotation: pseudo(index * 7.7 + 11) * Math.PI * 2,
+    }))
+  ), [])
+
+  return (
+    <group>
+      {details.map((detail, index) => {
+        if (detail.type === 0) {
+          return (
+            <mesh
+              key={index}
+              position={[detail.x, 0.425, detail.z]}
+              rotation={[-Math.PI / 2, 0, detail.rotation]}
+              scale={[detail.scale * 1.45, detail.scale, 1]}
+            >
+              <circleGeometry args={[0.24, 12]} />
+              <meshBasicMaterial color="#523d30" transparent opacity={0.1} depthWrite={false} />
+            </mesh>
+          )
+        }
+        if (detail.type === 1) {
+          return (
+            <mesh
+              key={index}
+              position={[detail.x, 0.455, detail.z]}
+              rotation={[0, detail.rotation, 0]}
+              scale={[detail.scale, detail.scale * 0.32, detail.scale * 0.62]}
+              castShadow
+            >
+              <sphereGeometry args={[0.11, 7, 5]} />
+              <meshStandardMaterial color={index % 3 ? '#d9c392' : '#efe0b4'} roughness={0.95} />
+            </mesh>
+          )
+        }
+        if (detail.type === 2) {
+          return (
+            <group key={index} position={[detail.x, 0.445, detail.z]} rotation={[0, detail.rotation, 0]} scale={detail.scale}>
+              <mesh position={[0, 0.03, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
+                <cylinderGeometry args={[0.022, 0.03, 0.48, 5]} />
+                <meshStandardMaterial color="#765139" roughness={1} />
+              </mesh>
+              <mesh position={[0.13, 0.05, 0.03]} rotation={[0.3, 0, 0]}>
+                <coneGeometry args={[0.045, 0.16, 5]} />
+                <meshStandardMaterial color="#8abc55" roughness={1} />
+              </mesh>
+            </group>
+          )
+        }
+        return (
+          <GrassTuft
+            key={index}
+            position={[detail.x, 0.43, detail.z]}
+            scale={detail.scale * 0.42}
+            color={index % 2 ? '#6cae4d' : '#80bd58'}
+            seed={index + 600}
+          />
+        )
+      })}
     </group>
   )
 }
@@ -731,7 +869,11 @@ function Worker({ position, shirt = '#f4d35e', seed = 0 }) {
 
   useFrame((state) => {
     if (!group.current) return
+    const walk = Math.sin(state.clock.elapsedTime * 0.38 + seed)
+    group.current.position.x = position[0] + walk * 0.18
+    group.current.position.z = position[2] + Math.cos(state.clock.elapsedTime * 0.3 + seed) * 0.08
     group.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 1.7 + seed) * 0.025
+    group.current.rotation.y = seed * 0.6 + walk * 0.16
   })
 
   return (
@@ -1106,8 +1248,9 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
         shadow-bias={-0.0004}
       />
 
-      <Water />
+      <Water day={day} />
       <CoastalTerrain />
+      <MudflatDetails />
       <DecorativeMangroves />
       <Nursery level={upgrades.nursery} />
       <DroneStation level={upgrades.mrv} />
