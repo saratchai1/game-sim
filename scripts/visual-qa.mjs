@@ -58,61 +58,67 @@ function developedGame(game) {
   }
 }
 
+function stormGame(game) {
+  const developed = developedGame(game)
+  return {
+    ...developed,
+    day: 7,
+    event: {
+      id: 'storm',
+      icon: '☁',
+      label: 'WEATHER EVENT',
+      title: 'มรสุมกำลังเข้า',
+      text: 'คลื่นแรงจะกระทบต้นกล้าและต้นอ่อนในพื้นที่ คุณจะรับมืออย่างไร?',
+      choices: [
+        { key: 'protect', label: 'เสริมแนวป้องกัน', hint: '120 เหรียญ · ลดความเสียหาย', cost: 120 },
+        { key: 'risk', label: 'รับความเสี่ยง', hint: 'ฟรี · ต้นอ่อนเสียสุขภาพ', cost: 0 },
+      ],
+    },
+  }
+}
+
 async function preparePage(page, scenario = 'initial') {
   await page.goto(baseUrl, { waitUntil: 'networkidle' })
   await page.evaluate(({ helpKey: key }) => {
     localStorage.setItem(key, '1')
   }, { helpKey })
 
-  if (scenario === 'developed') {
-    await page.evaluate(({ saveKey: key }) => {
+  if (scenario === 'developed' || scenario === 'storm') {
+    const currentGame = await page.evaluate((key) => {
       const raw = localStorage.getItem(key)
       if (!raw) throw new Error('Game save was not initialized')
-      const game = JSON.parse(raw)
-      const species = ['rhizophora', 'avicennia', 'sonneratia']
-      const ages = [8, 6, 4, 2]
-      game.day = 24
-      game.coins = 1640
-      game.gems = 28
-      game.estimatedCarbon = 18.6
-      game.credits = 8.4
-      game.biodiversity = 58
-      game.community = 49
-      game.coastal = 54
-      game.marketPrice = 104
-      game.activeSpecies = 'sonneratia'
-      game.event = null
-      game.upgrades = { nursery: 2, mrv: 2, community: 2 }
-      game.stats = { planted: 14, dead: 1, verified: 32.6, sold: 11 }
-      game.claimedChapters = [0, 1, 2]
-      game.plots = game.plots.map((plot, index) => {
-        if (index >= 14) return { ...plot, species: null, age: 0, health: 100, dead: false }
-        const dead = index === 13
-        return {
-          ...plot,
-          species: species[index % species.length],
-          age: ages[index % ages.length] + Math.floor(index / 6),
-          health: dead ? 4 : 78 + (index * 7) % 22,
-          dead,
-        }
-      })
-      game.log = [
-        { day: 24, type: 'carbon', text: 'ป่าฟื้นตัวและผ่าน MRV รอบล่าสุดแล้ว' },
-        { day: 23, type: 'reward', text: 'ชุมชนสร้างรายได้กลับเข้าโครงการ' },
-        ...(game.log || []),
-      ].slice(0, 8)
+      return JSON.parse(raw)
+    }, saveKey)
+    const preparedGame = scenario === 'storm'
+      ? stormGame(currentGame)
+      : developedGame(currentGame)
+
+    await page.evaluate(({ key, game }) => {
       localStorage.setItem(key, JSON.stringify(game))
-    }, { saveKey })
+    }, { key: saveKey, game: preparedGame })
   }
 
   await page.reload({ waitUntil: 'networkidle' })
   await page.waitForSelector('.game3d-shell', { timeout: 30000 })
   await page.waitForSelector('canvas', { timeout: 30000 })
-  await page.waitForTimeout(6000)
+
+  if (scenario === 'storm') {
+    await page.waitForSelector('.event-modal', { state: 'visible', timeout: 30000 })
+    const storedEvent = await page.evaluate((key) => JSON.parse(localStorage.getItem(key))?.event?.id, saveKey)
+    if (storedEvent !== 'storm') throw new Error(`Storm scenario was not loaded: ${storedEvent}`)
+
+    await page.evaluate(() => {
+      const eventModal = document.querySelector('.event-modal')
+      if (eventModal?.parentElement) eventModal.parentElement.style.display = 'none'
+    })
+    await page.waitForTimeout(2400)
+  } else {
+    await page.waitForTimeout(6000)
+  }
 }
 
 async function diagnosticsFor(page) {
-  return page.evaluate(() => {
+  return page.evaluate((key) => {
     const inspect = (selector) => {
       const element = document.querySelector(selector)
       if (!element) return null
@@ -147,10 +153,12 @@ async function diagnosticsFor(page) {
       } : null
     }
 
+    const savedGame = JSON.parse(localStorage.getItem(key) || 'null')
     return {
       title: document.title,
       url: location.href,
       bodyChildren: document.body.children.length,
+      eventType: savedGame?.event?.id || null,
       rootTextPreview: document.getElementById('root')?.innerText.slice(0, 500) || '',
       elements: [
         inspect('.game3d-shell'),
@@ -164,7 +172,7 @@ async function diagnosticsFor(page) {
       ],
       webgl,
     }
-  })
+  }, saveKey)
 }
 
 async function capture(name, viewport, { isMobile = false, scenario = 'initial' } = {}) {
@@ -182,6 +190,13 @@ async function capture(name, viewport, { isMobile = false, scenario = 'initial' 
 
   await preparePage(page, scenario)
   const diagnostics = await diagnosticsFor(page)
+  const pageErrors = messages.filter((message) => message.startsWith('[pageerror]'))
+  if (pageErrors.length) throw new Error(`${name} emitted page errors:\n${pageErrors.join('\n')}`)
+  if (!diagnostics.webgl) throw new Error(`${name} did not initialize WebGL`)
+  if (scenario === 'storm' && diagnostics.eventType !== 'storm') {
+    throw new Error(`${name} lost the storm event before capture`)
+  }
+
   await page.screenshot({ path: `${outputDir}/${name}.png`, fullPage: false })
   await fs.writeFile(
     `${outputDir}/${name}.json`,
@@ -259,6 +274,9 @@ async function exerciseCoreLoop() {
     throw new Error('Carbon market sale did not update resources')
   }
 
+  const pageErrors = messages.filter((message) => message.startsWith('[pageerror]'))
+  if (pageErrors.length) throw new Error(`Core loop emitted page errors:\n${pageErrors.join('\n')}`)
+
   await page.screenshot({ path: `${outputDir}/mangrove-bay-3d-core-loop.png`, fullPage: false })
   await fs.writeFile(
     `${outputDir}/mangrove-bay-3d-core-loop.json`,
@@ -292,5 +310,6 @@ await capture('mangrove-bay-3d-desktop', { width: 1440, height: 900 })
 await capture('mangrove-bay-3d-mobile', { width: 390, height: 844 }, { isMobile: true })
 await capture('mangrove-bay-3d-developed-desktop', { width: 1440, height: 900 }, { scenario: 'developed' })
 await capture('mangrove-bay-3d-developed-mobile', { width: 390, height: 844 }, { isMobile: true, scenario: 'developed' })
+await capture('mangrove-bay-3d-storm-desktop', { width: 1440, height: 900 }, { scenario: 'storm' })
 await exerciseCoreLoop()
 await browser.close()
