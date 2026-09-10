@@ -1,35 +1,34 @@
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import {
   ContactShadows,
   Float,
-  Html,
   OrbitControls,
   RoundedBox,
   Sparkles,
 } from '@react-three/drei'
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 
 const SPECIES_LOOK = {
   rhizophora: {
-    trunk: '#84502f',
-    leaf: '#2f9d49',
-    leafLight: '#69c64f',
-    leafDark: '#187a39',
+    trunk: '#86512f',
+    leaf: '#2e9d49',
+    leafLight: '#69c950',
+    leafDark: '#187638',
     canopy: 'round',
   },
   avicennia: {
-    trunk: '#8c6748',
-    leaf: '#63aa5b',
-    leafLight: '#a1d56a',
-    leafDark: '#3a8445',
+    trunk: '#8d694a',
+    leaf: '#65ab5d',
+    leafLight: '#a3d76d',
+    leafDark: '#3b8447',
     canopy: 'tall',
   },
   sonneratia: {
-    trunk: '#7a5038',
-    leaf: '#3caa64',
-    leafLight: '#7fd578',
-    leafDark: '#1e7f4c',
+    trunk: '#795039',
+    leaf: '#3dad66',
+    leafLight: '#82d77b',
+    leafDark: '#1f7f4c',
     canopy: 'wide',
   },
 }
@@ -37,14 +36,45 @@ const SPECIES_LOOK = {
 const PLOT_X = [-4.65, -1.55, 1.55, 4.65]
 const PLOT_Z = [-3.75, -1.25, 1.25, 3.75]
 
-function getPlotPosition(id) {
+function pseudo(seed) {
+  const value = Math.sin(seed * 999.91) * 43758.5453
+  return value - Math.floor(value)
+}
+
+function plotPosition(id) {
   const index = id - 1
   return [PLOT_X[index % 4], 0.15, PLOT_Z[Math.floor(index / 4)]]
 }
 
-function pseudo(seed) {
-  const value = Math.sin(seed * 999.91) * 43758.5453
-  return value - Math.floor(value)
+function CameraRig() {
+  const { camera, size } = useThree()
+
+  useEffect(() => {
+    const responsiveZoom = Math.max(
+      13,
+      Math.min(48, Math.min(size.width / 27, size.height / 21)),
+    )
+    camera.position.set(18, 17, 18)
+    camera.zoom = responsiveZoom
+    camera.lookAt(0, 0.35, 0)
+    camera.updateProjectionMatrix()
+  }, [camera, size.height, size.width])
+
+  return (
+    <OrbitControls
+      makeDefault
+      target={[0, 0.35, 0]}
+      enablePan={false}
+      enableDamping
+      dampingFactor={0.075}
+      minZoom={10}
+      maxZoom={68}
+      minPolarAngle={Math.PI / 4.25}
+      maxPolarAngle={Math.PI / 3.05}
+      minAzimuthAngle={-Math.PI * 0.75}
+      maxAzimuthAngle={Math.PI * 0.75}
+    />
+  )
 }
 
 function CylinderBetween({ start, end, radius = 0.06, color = '#815130' }) {
@@ -56,35 +86,31 @@ function CylinderBetween({ start, end, radius = 0.06, color = '#815130' }) {
     const midpoint = a.clone().add(b).multiplyScalar(0.5)
     const quaternion = new THREE.Quaternion().setFromUnitVectors(
       new THREE.Vector3(0, 1, 0),
-      direction.normalize(),
+      direction.clone().normalize(),
     )
     return { length, midpoint, quaternion }
-  }, [start, end])
+  }, [end, start])
 
   return (
-    <mesh
-      castShadow
-      position={transform.midpoint}
-      quaternion={transform.quaternion}
-    >
+    <mesh castShadow position={transform.midpoint} quaternion={transform.quaternion}>
       <cylinderGeometry args={[radius, radius * 1.12, transform.length, 7]} />
-      <meshStandardMaterial color={color} roughness={0.9} flatShading />
+      <meshStandardMaterial color={color} roughness={0.92} flatShading />
     </mesh>
   )
 }
 
-function LeafCluster({ position, scale = [1, 1, 1], color }) {
+function LeafCluster({ position, scale, color }) {
   return (
     <mesh castShadow position={position} scale={scale}>
       <dodecahedronGeometry args={[0.48, 1]} />
-      <meshStandardMaterial color={color} roughness={0.78} flatShading />
+      <meshStandardMaterial color={color} roughness={0.76} flatShading />
     </mesh>
   )
 }
 
 function DeadTree() {
   return (
-    <group>
+    <group position={[0, 0.25, 0]}>
       <mesh castShadow position={[0, 0.55, 0]} rotation={[0, 0, 0.06]}>
         <cylinderGeometry args={[0.08, 0.15, 1.1, 6]} />
         <meshStandardMaterial color="#77513b" roughness={1} flatShading />
@@ -109,15 +135,8 @@ function MangroveTree({ plot, plotId }) {
     group.current.rotation.x = Math.cos(state.clock.elapsedTime * 0.72 + seed) * 0.012
   })
 
-  if (plot.dead) {
-    return (
-      <group position={[0, 0.24, 0]} scale={0.92}>
-        <DeadTree />
-      </group>
-    )
-  }
+  if (plot.dead) return <DeadTree />
 
-  const canopyScale = stageScale * healthScale
   const clusters = look.canopy === 'tall'
     ? [
         [[0, 1.48, 0], [0.88, 1.18, 0.88], look.leaf],
@@ -142,7 +161,7 @@ function MangroveTree({ plot, plotId }) {
   return (
     <group
       ref={group}
-      position={[0, 0.24, 0]}
+      position={[0, 0.25, 0]}
       rotation={[0, pseudo(seed) * Math.PI * 2, 0]}
       scale={stageScale}
     >
@@ -171,7 +190,7 @@ function MangroveTree({ plot, plotId }) {
         </group>
       )}
 
-      <group scale={canopyScale / stageScale}>
+      <group scale={healthScale}>
         {clusters.map(([position, scale, color], index) => (
           <LeafCluster key={index} position={position} scale={scale} color={color} />
         ))}
@@ -195,11 +214,13 @@ function MangroveTree({ plot, plotId }) {
 
 function EmptyPlotMarker({ activeSpecies, hovered }) {
   const ring = useRef()
+
   useFrame((state) => {
     if (ring.current) ring.current.rotation.z = state.clock.elapsedTime * 0.65
   })
+
   return (
-    <group position={[0, 0.31, 0]}>
+    <group position={[0, 0.34, 0]}>
       <mesh ref={ring} rotation={[-Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.32, 0.055, 8, 24]} />
         <meshStandardMaterial
@@ -209,7 +230,7 @@ function EmptyPlotMarker({ activeSpecies, hovered }) {
           roughness={0.45}
         />
       </mesh>
-      <mesh position={[0, 0.08, 0]}>
+      <mesh position={[0, 0.09, 0]}>
         <sphereGeometry args={[0.1, 12, 8]} />
         <meshStandardMaterial color={SPECIES_LOOK[activeSpecies]?.leafLight || '#73c85a'} />
       </mesh>
@@ -219,13 +240,12 @@ function EmptyPlotMarker({ activeSpecies, hovered }) {
 
 function Plot3D({ plot, selected, activeSpecies, onClick }) {
   const [hovered, setHovered] = useState(false)
-  const position = getPlotPosition(plot.id)
   const occupied = Boolean(plot.species)
   const tileColor = plot.dead ? '#9c785a' : occupied ? '#b67b43' : '#c98c4d'
 
   return (
     <group
-      position={position}
+      position={plotPosition(plot.id)}
       onClick={(event) => {
         event.stopPropagation()
         onClick(plot.id)
@@ -249,8 +269,8 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
         />
       </RoundedBox>
 
-      {[[-0.72, -0.4], [-0.24, -0.4], [0.24, -0.4], [0.72, -0.4]].map(([x, z], index) => (
-        <mesh key={index} position={[x, 0.19, z]} receiveShadow>
+      {[-0.72, -0.24, 0.24, 0.72].map((x) => (
+        <mesh key={x} position={[x, 0.19, 0]} receiveShadow>
           <boxGeometry args={[0.23, 0.035, 1.15]} />
           <meshStandardMaterial color={occupied ? '#9c6438' : '#a86d3d'} roughness={1} />
         </mesh>
@@ -259,24 +279,18 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
       {(selected || hovered) && (
         <mesh position={[0, 0.34, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[1.24, 1.34, 40]} />
-          <meshBasicMaterial color={selected ? '#fff5a3' : '#ffffff'} transparent opacity={0.78} side={THREE.DoubleSide} />
+          <meshBasicMaterial
+            color={selected ? '#fff5a3' : '#ffffff'}
+            transparent
+            opacity={0.78}
+            side={THREE.DoubleSide}
+          />
         </mesh>
       )}
 
-      {occupied ? (
-        <MangroveTree plot={plot} plotId={plot.id} />
-      ) : (
-        <EmptyPlotMarker activeSpecies={activeSpecies} hovered={hovered} />
-      )}
-
-      {(selected || hovered) && (
-        <Html position={[0, occupied ? 2.35 : 1.0, 0]} center distanceFactor={13}>
-          <div className={`plot-world-label ${selected ? 'is-selected' : ''}`}>
-            <b>แปลง {String(plot.id).padStart(2, '0')}</b>
-            <span>{occupied ? `${plot.age} วัน · สุขภาพ ${Math.round(plot.health)}%` : `${plot.tide} / ${plot.soil}`}</span>
-          </div>
-        </Html>
-      )}
+      {occupied
+        ? <MangroveTree plot={plot} plotId={plot.id} />
+        : <EmptyPlotMarker activeSpecies={activeSpecies} hovered={hovered} />}
     </group>
   )
 }
@@ -293,13 +307,15 @@ function Water() {
   ), [])
 
   useFrame((state) => {
-    if (group.current) group.current.position.y = -0.73 + Math.sin(state.clock.elapsedTime * 0.55) * 0.025
+    if (group.current) {
+      group.current.position.y = -0.73 + Math.sin(state.clock.elapsedTime * 0.55) * 0.025
+    }
   })
 
   return (
     <group ref={group}>
       <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[48, 42, 1, 1]} />
+        <planeGeometry args={[48, 42]} />
         <meshStandardMaterial color="#49bddd" roughness={0.28} metalness={0.04} />
       </mesh>
       {ripples.map((ripple, index) => (
@@ -326,7 +342,6 @@ function Terrain() {
       <RoundedBox args={[14.1, 0.16, 11.05]} radius={0.4} smoothness={4} position={[0, 0.43, 0]} receiveShadow>
         <meshStandardMaterial color="#a8d462" roughness={1} />
       </RoundedBox>
-
       <mesh position={[0, 0.53, -5.55]} receiveShadow>
         <boxGeometry args={[14.8, 0.08, 0.62]} />
         <meshStandardMaterial color="#e2c071" roughness={1} />
@@ -339,7 +354,7 @@ function Terrain() {
   )
 }
 
-function Hut({ position, wall = '#ffd77c', roof = '#e5653c', label }) {
+function Hut({ position, wall = '#ffd77c', roof = '#e5653c' }) {
   return (
     <group position={position}>
       <RoundedBox args={[2.25, 1.4, 1.75]} radius={0.18} smoothness={3} position={[0, 0.92, 0]} castShadow receiveShadow>
@@ -357,20 +372,16 @@ function Hut({ position, wall = '#ffd77c', roof = '#e5653c', label }) {
         <boxGeometry args={[0.42, 0.42, 0.08]} />
         <meshStandardMaterial color="#8ee0ef" roughness={0.35} />
       </mesh>
-      {label && (
-        <Html position={[0, 2.85, 0]} center distanceFactor={14}>
-          <div className="building-world-label">{label}</div>
-        </Html>
-      )}
     </group>
   )
 }
 
 function Nursery({ level }) {
   const trays = Array.from({ length: 3 + level }, (_, index) => index)
+
   return (
     <group position={[-8.1, 0.47, -5.6]}>
-      <Hut position={[0, 0, 0]} wall="#f6df8d" roof="#ef8f3c" label={`Nursery Lv.${level}`} />
+      <Hut position={[0, 0, 0]} wall="#f6df8d" roof="#ef8f3c" />
       <group position={[1.7, 0.05, 0.1]}>
         {trays.map((index) => (
           <group key={index} position={[(index % 2) * 0.62, 0.15, Math.floor(index / 2) * 0.55 - 0.4]}>
@@ -391,10 +402,7 @@ function Nursery({ level }) {
 
 function Drone({ level }) {
   const drone = useRef()
-  const rotorA = useRef()
-  const rotorB = useRef()
-  const rotorC = useRef()
-  const rotorD = useRef()
+  const rotors = [useRef(), useRef(), useRef(), useRef()]
 
   useFrame((state) => {
     const t = state.clock.elapsedTime * (0.32 + level * 0.035)
@@ -404,8 +412,8 @@ function Drone({ level }) {
       drone.current.position.y = 4.3 + Math.sin(t * 2) * 0.22
       drone.current.rotation.y = -t + Math.PI / 2
     }
-    ;[rotorA, rotorB, rotorC, rotorD].forEach((ref) => {
-      if (ref.current) ref.current.rotation.y += 0.5
+    rotors.forEach((rotor) => {
+      if (rotor.current) rotor.current.rotation.y += 0.5
     })
   })
 
@@ -419,14 +427,14 @@ function Drone({ level }) {
         <meshStandardMaterial color="#2e4452" roughness={0.25} metalness={0.3} />
       </mesh>
       {[
-        [-0.52, 0, -0.42, rotorA],
-        [0.52, 0, -0.42, rotorB],
-        [-0.52, 0, 0.42, rotorC],
-        [0.52, 0, 0.42, rotorD],
-      ].map(([x, y, z, ref], index) => (
+        [-0.52, 0, -0.42],
+        [0.52, 0, -0.42],
+        [-0.52, 0, 0.42],
+        [0.52, 0, 0.42],
+      ].map(([x, y, z], index) => (
         <group key={index} position={[x, y, z]}>
           <CylinderBetween start={[0, 0, 0]} end={[-x * 0.72, 0, -z * 0.72]} radius={0.035} color="#425b65" />
-          <mesh ref={ref} position={[0, 0.04, 0]}>
+          <mesh ref={rotors[index]} position={[0, 0.04, 0]}>
             <cylinderGeometry args={[0.34, 0.34, 0.025, 18]} />
             <meshStandardMaterial color="#344c57" transparent opacity={0.68} />
           </mesh>
@@ -439,7 +447,7 @@ function Drone({ level }) {
 function DroneStation({ level }) {
   return (
     <group>
-      <Hut position={[8.0, 0.47, -5.55]} wall="#eaf4ff" roof="#4a9fd4" label={`MRV Lab Lv.${level}`} />
+      <Hut position={[8.0, 0.47, -5.55]} wall="#eaf4ff" roof="#4a9fd4" />
       <mesh position={[8.9, 2.15, -5.3]} castShadow>
         <cylinderGeometry args={[0.07, 0.09, 2.15, 8]} />
         <meshStandardMaterial color="#657984" roughness={0.65} metalness={0.32} />
@@ -456,7 +464,7 @@ function DroneStation({ level }) {
 function CommunityVillage({ level }) {
   return (
     <group position={[-8.15, 0.47, 5.45]}>
-      <Hut position={[0, 0, 0]} wall="#ffd38d" roof="#e85e4b" label={`ชุมชน Lv.${level}`} />
+      <Hut position={[0, 0, 0]} wall="#ffd38d" roof="#e85e4b" />
       {level >= 1 && <Hut position={[2.15, 0, 0.35]} wall="#feeab0" roof="#5cb574" />}
       {level >= 2 && <Hut position={[1.0, 0, -1.75]} wall="#f7d6b8" roof="#4f92d1" />}
       <group position={[-1.52, 0.13, 0.5]}>
@@ -477,8 +485,28 @@ function CommunityVillage({ level }) {
   )
 }
 
+function Dock() {
+  return (
+    <group position={[8.4, -0.07, 4.95]} rotation={[0, -0.13, 0]}>
+      {[0, 0.58, 1.16, 1.74].map((x) => (
+        <mesh key={x} position={[x, 0, 0]} castShadow receiveShadow>
+          <boxGeometry args={[0.5, 0.14, 1.25]} />
+          <meshStandardMaterial color="#9b6639" roughness={1} />
+        </mesh>
+      ))}
+      {[0, 1.75].map((x) => (
+        <mesh key={x} position={[x, -0.45, -0.45]} castShadow>
+          <cylinderGeometry args={[0.08, 0.1, 1.15, 7]} />
+          <meshStandardMaterial color="#6e4a30" roughness={1} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
 function Boat() {
   const boat = useRef()
+
   useFrame((state) => {
     if (!boat.current) return
     boat.current.position.y = -0.38 + Math.sin(state.clock.elapsedTime * 1.15) * 0.055
@@ -507,25 +535,6 @@ function Boat() {
   )
 }
 
-function Dock() {
-  return (
-    <group position={[8.4, -0.07, 4.95]} rotation={[0, -0.13, 0]}>
-      {[0, 0.58, 1.16, 1.74].map((x) => (
-        <mesh key={x} position={[x, 0, 0]} castShadow receiveShadow>
-          <boxGeometry args={[0.5, 0.14, 1.25]} />
-          <meshStandardMaterial color="#9b6639" roughness={1} />
-        </mesh>
-      ))}
-      {[0, 1.75].map((x) => (
-        <mesh key={x} position={[x, -0.45, -0.45]} castShadow>
-          <cylinderGeometry args={[0.08, 0.1, 1.15, 7]} />
-          <meshStandardMaterial color="#6e4a30" roughness={1} />
-        </mesh>
-      ))}
-    </group>
-  )
-}
-
 function DecorativeMangroves() {
   const trees = useMemo(() => ([
     [-8.7, 0.4, -2.4, 'avicennia', 8],
@@ -550,9 +559,10 @@ function DecorativeMangroves() {
 function Clouds() {
   const clouds = [
     [-10, 8.1, -8, 1.25],
-    [8, 9.2, -11, 1.0],
+    [8, 9.2, -11, 1],
     [12, 7.1, 3, 0.78],
   ]
+
   return (
     <group>
       {clouds.map(([x, y, z, scale], index) => (
@@ -563,8 +573,8 @@ function Clouds() {
               [0, 0.18, 0, 0.9],
               [0.72, 0, 0.02, 0.62],
               [0.16, -0.12, 0.08, 0.72],
-            ].map(([cx, cy, cz, s], cloudIndex) => (
-              <mesh key={cloudIndex} position={[cx, cy, cz]} scale={s}>
+            ].map(([cx, cy, cz, sphereScale], cloudIndex) => (
+              <mesh key={cloudIndex} position={[cx, cy, cz]} scale={sphereScale}>
                 <sphereGeometry args={[0.8, 14, 10]} />
                 <meshStandardMaterial color="#ffffff" roughness={0.96} transparent opacity={0.92} />
               </mesh>
@@ -576,7 +586,7 @@ function Clouds() {
   )
 }
 
-function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, day, upgrades }) {
+function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades }) {
   return (
     <>
       <color attach="background" args={['#80d5fb']} />
@@ -615,27 +625,25 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, day, upgr
         />
       ))}
 
-      <Sparkles count={38} scale={[22, 8, 18]} size={1.4} speed={0.16} color="#fff7b0" opacity={0.34} position={[0, 3.8, 0]} />
-      <Clouds />
-      <ContactShadows position={[0, -0.67, 0]} opacity={0.34} scale={28} blur={2.7} far={13} resolution={512} />
-
-      <OrbitControls
-        makeDefault
-        target={[0, 0.4, 0]}
-        enablePan={false}
-        enableDamping
-        dampingFactor={0.075}
-        minZoom={29}
-        maxZoom={66}
-        minPolarAngle={Math.PI / 5.4}
-        maxPolarAngle={Math.PI / 2.75}
-        minAzimuthAngle={-Math.PI * 0.72}
-        maxAzimuthAngle={Math.PI * 0.72}
+      <Sparkles
+        count={38}
+        scale={[22, 8, 18]}
+        size={1.4}
+        speed={0.16}
+        color="#fff7b0"
+        opacity={0.34}
+        position={[0, 3.8, 0]}
       />
-
-      <Html position={[-10.2, 0.75, 0]} center distanceFactor={15}>
-        <div className="tide-world-tag">{['น้ำลง', 'น้ำกำลังขึ้น', 'น้ำขึ้น', 'น้ำกำลังลง'][(day - 1) % 4]}</div>
-      </Html>
+      <Clouds />
+      <ContactShadows
+        position={[0, -0.67, 0]}
+        opacity={0.34}
+        scale={28}
+        blur={2.7}
+        far={13}
+        resolution={256}
+      />
+      <CameraRig />
     </>
   )
 }
@@ -656,7 +664,7 @@ export default function MangroveWorld3D(props) {
         orthographic
         shadows
         dpr={[1, 1.55]}
-        camera={{ position: [17, 17, 17], zoom: 42, near: 0.1, far: 120 }}
+        camera={{ position: [18, 17, 18], zoom: 38, near: 0.1, far: 120 }}
         gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
         fallback={<WebGLFallback />}
         onPointerMissed={() => props.onClearSelection?.()}
