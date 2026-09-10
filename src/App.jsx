@@ -1,57 +1,175 @@
 import { useEffect, useMemo, useState } from 'react'
+import MangroveWorld3D from './MangroveWorld3D.jsx'
 
-const SAVE_KEY = 'mangrove-blue-carbon-save-v2'
-const LEGACY_SAVE_KEY = 'mangrove-blue-carbon-save-v1'
-const TUTORIAL_KEY = 'mangrove-blue-carbon-tutorial-seen'
+const SAVE_KEY = 'mangrove-bay-3d-save-v2'
 
 const SPECIES = {
   rhizophora: {
     name: 'โกงกางใบใหญ่',
     short: 'โกงกาง',
     latin: 'Rhizophora mucronata',
-    icon: '🌱',
-    matureIcon: '🌳',
-    cost: 65,
-    carbon: 1.55,
-    biodiversity: 1.0,
+    cost: 70,
+    carbon: 1.65,
+    biodiversity: 0.85,
     tides: ['กลาง'],
     soils: ['เลน', 'ตะกอน'],
-    note: 'คาร์บอนสูง เหมาะกับโซนน้ำกลางและพื้นเลน',
+    icon: 'R',
+    tint: '#35a84f',
+    description: 'คาร์บอนสูง รากค้ำยันเด่น เหมาะกับโซนน้ำกลาง',
   },
   avicennia: {
     name: 'แสมขาว',
     short: 'แสม',
     latin: 'Avicennia alba',
-    icon: '🌿',
-    matureIcon: '🌲',
-    cost: 50,
+    cost: 54,
     carbon: 1.2,
-    biodiversity: 1.2,
+    biodiversity: 1.15,
     tides: ['กลาง', 'สูง'],
     soils: ['ตะกอน', 'ดินเลน'],
-    note: 'ตั้งตัวไว เหมาะกับโซนกลางถึงสูงและช่วยเพิ่มความหลากหลาย',
+    icon: 'A',
+    tint: '#79bd59',
+    description: 'ตั้งตัวไว ทนน้ำสูง และช่วยเพิ่มความหลากหลาย',
   },
   sonneratia: {
     name: 'ลำพู',
     short: 'ลำพู',
     latin: 'Sonneratia caseolaris',
-    icon: '☘️',
-    matureIcon: '🌴',
-    cost: 58,
-    carbon: 1.3,
+    cost: 62,
+    carbon: 1.35,
     biodiversity: 1.55,
     tides: ['ต่ำ', 'กลาง'],
     soils: ['เลน', 'ตะกอน'],
-    note: 'แต้มระบบนิเวศสูง เหมาะกับพื้นที่ริมน้ำและโซนน้ำต่ำ',
+    icon: 'S',
+    tint: '#45b77a',
+    description: 'เรือนยอดกว้าง ให้แต้มระบบนิเวศสูงในพื้นที่ริมน้ำ',
   },
 }
 
-const BASE_PLOTS = [
+const PLOT_CONDITIONS = [
   ['ต่ำ', 'เลน'], ['ต่ำ', 'เลน'], ['ต่ำ', 'ตะกอน'], ['ต่ำ', 'ทราย'],
   ['กลาง', 'เลน'], ['กลาง', 'เลน'], ['กลาง', 'ตะกอน'], ['กลาง', 'ทราย'],
   ['กลาง', 'ตะกอน'], ['กลาง', 'ดินเลน'], ['สูง', 'ตะกอน'], ['สูง', 'ดินเลน'],
   ['สูง', 'ดินเลน'], ['สูง', 'ตะกอน'], ['สูง', 'ทราย'], ['สูง', 'ดินเลน'],
-].map(([tide, soil], index) => ({
+]
+
+const EVENTS = [
+  {
+    id: 'storm',
+    icon: '☁',
+    label: 'WEATHER EVENT',
+    title: 'มรสุมกำลังเข้า',
+    text: 'คลื่นแรงจะกระทบต้นกล้าและต้นอ่อนในพื้นที่ คุณจะรับมืออย่างไร?',
+    choices: [
+      { key: 'protect', label: 'เสริมแนวป้องกัน', hint: '120 เหรียญ · ลดความเสียหาย', cost: 120 },
+      { key: 'risk', label: 'รับความเสี่ยง', hint: 'ฟรี · ต้นอ่อนเสียสุขภาพ', cost: 0 },
+    ],
+  },
+  {
+    id: 'trash',
+    icon: '♻',
+    label: 'COASTAL EVENT',
+    title: 'ขยะทะเลพัดเข้าพื้นที่',
+    text: 'ขยะติดตามแนวราก หากปล่อยไว้นานจะกระทบสัตว์น้ำและคุณภาพพื้นที่',
+    choices: [
+      { key: 'clean', label: 'จ้างชุมชนเก็บขยะ', hint: '80 เหรียญ · Nature + Community', cost: 80 },
+      { key: 'leave', label: 'ไว้ก่อน', hint: 'ฟรี · Biodiversity ลดลง', cost: 0 },
+    ],
+  },
+  {
+    id: 'fishers',
+    icon: '⚓',
+    label: 'COMMUNITY EVENT',
+    title: 'กลุ่มประมงเสนอความร่วมมือ',
+    text: 'ชาวบ้านต้องการช่วยเฝ้าระวังพื้นที่ แลกกับกองทุนอุปกรณ์ประมงชุมชน',
+    choices: [
+      { key: 'partner', label: 'ตั้งทีมเฝ้าระวังร่วม', hint: '140 เหรียญ · Community +8', cost: 140 },
+      { key: 'decline', label: 'ยังไม่ร่วมโครงการ', hint: 'รับรายได้ 70 · Community -2', cost: 0 },
+    ],
+  },
+  {
+    id: 'kingtide',
+    icon: '≈',
+    label: 'TIDE EVENT',
+    title: 'น้ำทะเลหนุนสูงผิดปกติ',
+    text: 'น้ำสูงกำลังทดสอบความแข็งแรงของพื้นที่ฟื้นฟู โดยเฉพาะต้นอายุน้อย',
+    choices: [
+      { key: 'reinforce', label: 'เสริมแนวธรรมชาติ', hint: '160 เหรียญ · Coastal +10', cost: 160 },
+      { key: 'observe', label: 'ติดตามสถานการณ์', hint: 'ฟรี · สุขภาพต้นอ่อนลดลง', cost: 0 },
+    ],
+  },
+  {
+    id: 'wildlife',
+    icon: '◇',
+    label: 'BIODIVERSITY EVENT',
+    title: 'พบสัตว์น้ำกลับเข้าพื้นที่',
+    text: 'มีรายงานปู ปลา และนกชายเลนเพิ่มขึ้น ควรสำรวจอย่างเป็นระบบหรือไม่?',
+    choices: [
+      { key: 'survey', label: 'ทำ Biodiversity Survey', hint: '50 เหรียญ · Biodiversity +8', cost: 50 },
+      { key: 'record', label: 'บันทึกเบื้องต้น', hint: 'ฟรี · Biodiversity +2', cost: 0 },
+    ],
+  },
+  {
+    id: 'grant',
+    icon: '✦',
+    label: 'PROJECT EVENT',
+    title: 'ได้รับข้อเสนอทุนฟื้นฟูชายฝั่ง',
+    text: 'ผู้สนับสนุนพร้อมเพิ่มงบ แต่ต้องแสดงประโยชน์ต่อชุมชนอย่างชัดเจน',
+    choices: [
+      { key: 'accept', label: 'รับทุนแบบมีส่วนร่วม', hint: '+240 เหรียญ · Community +4', cost: 0 },
+      { key: 'independent', label: 'ดำเนินงานเอง', hint: 'Impact +2', cost: 0 },
+    ],
+  },
+]
+
+const UPGRADE_INFO = {
+  nursery: {
+    name: 'เรือนเพาะชำ',
+    icon: 'N',
+    description: 'ลดต้นทุนต้นกล้า 7 เหรียญต่อระดับ',
+    baseCost: 240,
+  },
+  mrv: {
+    name: 'ศูนย์ Drone MRV',
+    icon: 'D',
+    description: 'ลดค่าตรวจและเพิ่มอัตราการออกเครดิต',
+    baseCost: 285,
+  },
+  community: {
+    name: 'ทีมชุมชน',
+    icon: 'C',
+    description: 'เพิ่ม Community และรายได้จากอาชีพท้องถิ่น',
+    baseCost: 225,
+  },
+}
+
+const STORY_CHAPTERS = [
+  {
+    title: 'เริ่มฟื้นฟูชายฝั่ง',
+    text: 'ปลูกต้นไม้ให้ครบ 4 ต้น',
+    test: (game) => game.stats.planted >= 4,
+    reward: 120,
+  },
+  {
+    title: 'ระบบนิเวศเริ่มตั้งตัว',
+    text: 'มีต้นโตเต็มที่อย่างน้อย 3 ต้น',
+    test: (game, derived) => derived.matureCount >= 3,
+    reward: 180,
+  },
+  {
+    title: 'พิสูจน์ผลลัพธ์',
+    text: 'ออก Verified Carbon สะสม 10 tCO₂e',
+    test: (game) => game.stats.verified >= 10,
+    reward: 240,
+  },
+  {
+    title: 'Living Coast Standard',
+    text: 'ทำข้อกำหนดปลายทางให้ครบทุกข้อ',
+    test: (game, derived) => derived.victory,
+    reward: 500,
+  },
+]
+
+const createInitialPlots = () => PLOT_CONDITIONS.map(([tide, soil], index) => ({
   id: index + 1,
   tide,
   soil,
@@ -61,216 +179,35 @@ const BASE_PLOTS = [
   dead: false,
 }))
 
-const EVENTS = [
-  {
-    id: 'storm',
-    eyebrow: 'WEATHER EVENT',
-    title: 'มรสุมกำลังเข้า',
-    text: 'คลื่นแรงอาจกระทบต้นกล้าและต้นอ่อน คุณจะจัดการอย่างไร?',
-    icon: '🌧️',
-    choices: [
-      { key: 'protect', label: 'เสริมแนวป้องกัน', hint: '-90 เหรียญ · ลดความเสียหาย', cost: 90 },
-      { key: 'risk', label: 'รับความเสี่ยง', hint: 'ฟรี · ต้นอ่อนเสียสุขภาพ', cost: 0 },
-    ],
-  },
-  {
-    id: 'trash',
-    eyebrow: 'COASTAL EVENT',
-    title: 'ขยะทะเลพัดเข้าแปลง',
-    text: 'ขยะสะสมตามแนวราก หากปล่อยไว้อาจกระทบสุขภาพระบบนิเวศ',
-    icon: '🧹',
-    choices: [
-      { key: 'clean', label: 'จ้างชุมชนเก็บขยะ', hint: '-65 เหรียญ · Nature + Community', cost: 65 },
-      { key: 'leave', label: 'ไว้ก่อน', hint: 'ฟรี · Biodiversity ลดลง', cost: 0 },
-    ],
-  },
-  {
-    id: 'nursery',
-    eyebrow: 'COMMUNITY EVENT',
-    title: 'ชุมชนเสนอทำเรือนเพาะชำ',
-    text: 'ลงทุนร่วมกับชุมชนเพื่อให้ต้นกล้าในอนาคตมีต้นทุนลดลง',
-    icon: '🏡',
-    choices: [
-      { key: 'invest', label: 'ร่วมลงทุน Nursery', hint: '-150 เหรียญ · Nursery ดีขึ้น', cost: 150 },
-      { key: 'later', label: 'ไว้รอบหน้า', hint: 'ไม่มีผล', cost: 0 },
-    ],
-  },
-  {
-    id: 'wildlife',
-    eyebrow: 'BIODIVERSITY EVENT',
-    title: 'พบปูและปลากลับเข้าพื้นที่',
-    text: 'การฟื้นฟูเริ่มสร้างที่อยู่อาศัย ระบบนิเวศตอบสนองเชิงบวก',
-    icon: '🦀',
-    choices: [
-      { key: 'record', label: 'บันทึกการสำรวจ', hint: 'Biodiversity +6', cost: 0 },
-    ],
-  },
-  {
-    id: 'fishers',
-    eyebrow: 'COMMUNITY EVENT',
-    title: 'กลุ่มประมงพื้นบ้านขอร่วมวางแผน',
-    text: 'ชาวบ้านเสนอเขตอนุรักษ์สัตว์น้ำวัยอ่อนรอบแปลงฟื้นฟู',
-    icon: '🐟',
-    choices: [
-      { key: 'partner', label: 'ทำข้อตกลงร่วมกัน', hint: '-55 เหรียญ · Community +8', cost: 55 },
-      { key: 'decline', label: 'ยังไม่พร้อม', hint: 'Community -2', cost: 0 },
-    ],
-  },
-  {
-    id: 'erosion',
-    eyebrow: 'COASTAL EVENT',
-    title: 'แนวชายฝั่งเริ่มถูกกัดเซาะ',
-    text: 'พื้นที่เปิดรับคลื่นมากขึ้น ควรลงทุนลดแรงคลื่นหรือเฝ้าดูต่อ',
-    icon: '🌊',
-    choices: [
-      { key: 'barrier', label: 'ทำแนวลดแรงคลื่น', hint: '-110 เหรียญ · Resilience +9', cost: 110 },
-      { key: 'observe', label: 'เฝ้าดูต่อ', hint: 'Resilience -5', cost: 0 },
-    ],
-  },
-]
+const createInitialGame = () => ({
+  version: 2,
+  day: 1,
+  coins: 960,
+  gems: 12,
+  estimatedCarbon: 0,
+  credits: 0,
+  biodiversity: 10,
+  community: 12,
+  coastal: 10,
+  marketPrice: 86,
+  activeSpecies: 'rhizophora',
+  plots: createInitialPlots(),
+  event: null,
+  upgrades: { nursery: 0, mrv: 0, community: 0 },
+  stats: { planted: 0, dead: 0, verified: 0, sold: 0 },
+  claimedChapters: [],
+  log: [
+    { day: 1, type: 'info', text: 'ได้รับพื้นที่ชายฝั่ง 16 แปลง เลือกพันธุ์ด้านล่างแล้วคลิกพื้นที่ 3D เพื่อปลูก' },
+  ],
+})
 
-const UPGRADES = {
-  nursery: {
-    icon: '🏡',
-    name: 'เรือนเพาะชำชุมชน',
-    description: 'ลดค่าต้นกล้า 7 เหรียญต่อระดับ',
-    baseCost: 150,
-    step: 85,
-  },
-  drone: {
-    icon: '🚁',
-    name: 'ระบบ Drone MRV',
-    description: 'ลดค่าตรวจและเพิ่มอัตราออกเครดิต',
-    baseCost: 190,
-    step: 105,
-  },
-  community: {
-    icon: '🤝',
-    name: 'ทีมดูแลพื้นที่',
-    description: 'เพิ่มผลประโยชน์ด้านชุมชนและธรรมชาติ',
-    baseCost: 165,
-    step: 90,
-  },
-}
-
-const CHAPTERS = [
-  {
-    id: 'first-roots',
-    title: 'รากแรกของพื้นที่',
-    goal: 'มีต้นไม้รอดอย่างน้อย 4 ต้น',
-    ready: (m) => m.liveCount >= 4,
-    reward: { coins: 120, biodiversity: 2, community: 2 },
-  },
-  {
-    id: 'young-forest',
-    title: 'ป่าเริ่มตั้งตัว',
-    goal: 'มีต้นโตเต็มที่อย่างน้อย 4 ต้น',
-    ready: (m) => m.matureCount >= 4,
-    reward: { coins: 140, coastal: 4 },
-  },
-  {
-    id: 'verified-impact',
-    title: 'พิสูจน์ผลลัพธ์',
-    goal: 'ออก Verified Carbon Credit สะสม 15 tCO₂e',
-    ready: (m) => m.verified >= 15,
-    reward: { coins: 180, community: 4 },
-  },
-  {
-    id: 'living-coast',
-    title: 'ชายฝั่งที่มีชีวิต',
-    goal: 'Project Impact อย่างน้อย 50 และมีไม้ครบ 3 ชนิด',
-    ready: (m) => m.impactScore >= 50 && m.speciesCount >= 3,
-    reward: { coins: 220, biodiversity: 5, coastal: 5 },
-  },
-]
-
-const TUTORIAL = [
-  {
-    icon: '🌱',
-    title: 'ปลูกให้ถูกพื้นที่',
-    text: 'เลือกพันธุ์ไม้ด้านล่างแล้วคลิกแปลงว่าง จุด ●● หมายถึงเหมาะกับระดับน้ำและดินมากที่สุด',
-  },
-  {
-    icon: '☀️',
-    title: 'ให้เวลาเดิน',
-    text: 'กด “จบวันนี้” ให้ต้นไม้เติบโต สุขภาพและอัตรารอดขึ้นกับความเหมาะสมของแปลง',
-  },
-  {
-    icon: '🚁',
-    title: 'Carbon ต้องผ่าน MRV',
-    text: 'Carbon ที่ต้นไม้สะสมยังเป็น Estimated Carbon ต้องส่ง Drone + Field ตรวจจึงกลายเป็น Verified Credit ที่ขายได้',
-  },
-  {
-    icon: '🦀',
-    title: 'ไม่ได้ชนะด้วย Carbon อย่างเดียว',
-    text: 'รักษา Biodiversity, Community และ Coastal resilience ให้สมดุล แล้วฟื้นฟูชายฝั่งให้ผ่านเป้าหมายโครงการ',
-  },
-]
-
-function createInitialGame() {
-  return {
-    version: 2,
-    day: 1,
-    coins: 980,
-    estimatedCarbon: 0,
-    credits: 0,
-    biodiversity: 8,
-    community: 10,
-    coastal: 6,
-    marketPrice: 82,
-    lastMarketPrice: 82,
-    selectedSpecies: 'rhizophora',
-    plots: BASE_PLOTS.map((plot) => ({ ...plot })),
-    event: null,
-    upgrades: { nursery: 0, drone: 0, community: 0 },
-    claimedChapters: [],
-    emergencyGrantUsed: false,
-    completed: false,
-    stats: {
-      planted: 0,
-      failed: 0,
-      verified: 0,
-      sold: 0,
-      mrvRuns: 0,
-      maintenance: 0,
-    },
-    log: [
-      { day: 1, icon: '🗺️', text: 'ได้รับพื้นที่ชายฝั่งเสื่อมโทรม 16 แปลง เริ่มโครงการฟื้นฟูได้เลย' },
-    ],
-  }
-}
-
-function normalizeGame(saved) {
-  const base = createInitialGame()
-  if (!saved || typeof saved !== 'object') return base
-
-  return {
-    ...base,
-    ...saved,
-    version: 2,
-    selectedSpecies: SPECIES[saved.selectedSpecies] ? saved.selectedSpecies : 'rhizophora',
-    plots: Array.isArray(saved.plots) && saved.plots.length === BASE_PLOTS.length
-      ? saved.plots.map((plot, index) => ({ ...BASE_PLOTS[index], ...plot }))
-      : base.plots,
-    upgrades: {
-      ...base.upgrades,
-      ...(saved.upgrades || {}),
-      nursery: saved.upgrades?.nursery ?? saved.nurseryLevel ?? 0,
-    },
-    claimedChapters: Array.isArray(saved.claimedChapters) ? saved.claimedChapters : [],
-    stats: {
-      ...base.stats,
-      ...(saved.stats || {}),
-      failed: saved.stats?.failed ?? saved.stats?.dead ?? 0,
-    },
-    log: Array.isArray(saved.log) && saved.log.length ? saved.log : base.log,
-  }
-}
-
-function loadGame() {
+function safeLoad() {
   try {
-    const raw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(LEGACY_SAVE_KEY)
-    return raw ? normalizeGame(JSON.parse(raw)) : createInitialGame()
+    const raw = localStorage.getItem(SAVE_KEY)
+    if (!raw) return createInitialGame()
+    const parsed = JSON.parse(raw)
+    if (parsed.version !== 2 || !Array.isArray(parsed.plots)) return createInitialGame()
+    return parsed
   } catch {
     return createInitialGame()
   }
@@ -286,209 +223,182 @@ function suitability(plot, speciesKey) {
   return Number(species.tides.includes(plot.tide)) + Number(species.soils.includes(plot.soil))
 }
 
-function stageFor(plot) {
-  if (plot.dead) return 'dead'
-  if (!plot.species) return 'empty'
-  if (plot.age < 2) return 'seedling'
-  if (plot.age < 5) return 'young'
-  return 'mature'
+function getPlantCost(game, speciesKey) {
+  return Math.max(30, SPECIES[speciesKey].cost - game.upgrades.nursery * 7)
 }
 
-function stageLabel(plot) {
+function getMrvCost(game) {
+  return Math.max(70, 155 - game.upgrades.mrv * 25)
+}
+
+function appendLog(game, text, type = 'info') {
   return {
-    empty: 'ว่าง',
-    seedling: 'ต้นกล้า',
-    young: 'ต้นอ่อน',
-    mature: 'โตเต็มที่',
-    dead: 'ไม่รอด',
-  }[stageFor(plot)]
-}
-
-function treeIcon(plot) {
-  if (!plot.species) return '＋'
-  if (plot.dead) return '🥀'
-  const species = SPECIES[plot.species]
-  return plot.age >= 5 ? species.matureIcon : species.icon
-}
-
-function getMetrics(state) {
-  const livePlots = state.plots.filter((plot) => plot.species && !plot.dead)
-  const matureCount = livePlots.filter((plot) => plot.age >= 5).length
-  const speciesCount = new Set(livePlots.map((plot) => plot.species)).size
-  const survivalRate = state.stats.planted
-    ? clamp(Math.round((livePlots.length / state.stats.planted) * 100))
-    : 100
-  const impactScore = clamp(Math.round(
-    state.biodiversity * 0.38 + state.community * 0.34 + state.coastal * 0.28,
-  ))
-  const levelPoints = state.stats.planted + state.stats.verified / 5 + impactScore / 10
-  const level = clamp(1 + Math.floor(levelPoints / 6), 1, 5)
-
-  return {
-    livePlots,
-    liveCount: livePlots.length,
-    matureCount,
-    speciesCount,
-    survivalRate,
-    impactScore,
-    level,
-    verified: state.stats.verified,
+    ...game,
+    log: [{ day: game.day, type, text }, ...game.log].slice(0, 8),
   }
 }
 
-function upgradeCost(key, level) {
-  const upgrade = UPGRADES[key]
-  return upgrade.baseCost + upgrade.step * level
-}
-
 function App() {
-  const [game, setGame] = useState(loadGame)
+  const [game, setGame] = useState(safeLoad)
   const [selectedPlot, setSelectedPlot] = useState(null)
-  const [notice, setNotice] = useState('เลือกพันธุ์ไม้ แล้วคลิกแปลงว่างเพื่อปลูก')
-  const [tutorialStep, setTutorialStep] = useState(() => (
-    localStorage.getItem(TUTORIAL_KEY) ? -1 : 0
-  ))
-  const [showCompletion, setShowCompletion] = useState(false)
+  const [notice, setNotice] = useState('เลือกพันธุ์ไม้ด้านล่าง แล้วคลิกแปลงว่างในฉาก 3D')
+  const [showHelp, setShowHelp] = useState(() => !localStorage.getItem('mangrove-bay-3d-help-seen'))
+  const [showUpgrades, setShowUpgrades] = useState(false)
+  const [showLog, setShowLog] = useState(false)
+  const [showGoals, setShowGoals] = useState(false)
+  const [sandbox, setSandbox] = useState(false)
 
   useEffect(() => {
     localStorage.setItem(SAVE_KEY, JSON.stringify(game))
   }, [game])
 
-  const metrics = getMetrics(game)
-  const selectedSpecies = SPECIES[game.selectedSpecies]
-  const currentPlot = game.plots.find((plot) => plot.id === selectedPlot)
+  const derived = useMemo(() => {
+    const planted = game.plots.filter((plot) => plot.species)
+    const living = planted.filter((plot) => !plot.dead)
+    const matureCount = living.filter((plot) => plot.age >= 6).length
+    const survivalRate = game.stats.planted
+      ? Math.round(((game.stats.planted - game.stats.dead) / game.stats.planted) * 100)
+      : 100
+    const impact = clamp(Math.round(
+      game.biodiversity * 0.36 + game.community * 0.32 + game.coastal * 0.32,
+    ))
+    const victoryChecks = {
+      living: living.length >= 12,
+      mature: matureCount >= 8,
+      carbon: game.stats.verified >= 25,
+      biodiversity: game.biodiversity >= 45,
+      community: game.community >= 35,
+      coastal: game.coastal >= 35,
+      survival: survivalRate >= 70,
+    }
+    const victory = Object.values(victoryChecks).every(Boolean)
+    return {
+      planted,
+      living,
+      matureCount,
+      survivalRate,
+      impact,
+      victoryChecks,
+      victory,
+    }
+  }, [game])
+
+  const selected = game.plots.find((plot) => plot.id === selectedPlot) || null
   const year = Math.floor((game.day - 1) / 20) + 1
-  const tidePhase = ['น้ำลง', 'น้ำกำลังขึ้น', 'น้ำขึ้น', 'น้ำกำลังลง'][(game.day - 1) % 4]
-  const marketTrend = game.marketPrice - game.lastMarketPrice
-  const plantingCost = (species) => Math.max(28, species.cost - game.upgrades.nursery * 7)
-  const mrvCost = Math.max(65, 120 - game.upgrades.drone * 18)
-  const livelihoodIncome = game.community >= 30 ? Math.floor(game.community / 20) * 5 : 0
-
-  const completionRequirements = useMemo(() => [
-    { label: 'ต้นไม้รอด', value: metrics.liveCount, target: 12, unit: 'ต้น' },
-    { label: 'ต้นโตเต็มที่', value: metrics.matureCount, target: 8, unit: 'ต้น' },
-    { label: 'Verified carbon สะสม', value: metrics.verified, target: 25, unit: 'tCO₂e' },
-    { label: 'Biodiversity', value: game.biodiversity, target: 45, unit: '' },
-    { label: 'Community', value: game.community, target: 35, unit: '' },
-    { label: 'Coastal resilience', value: game.coastal, target: 35, unit: '' },
-    { label: 'Survival rate', value: metrics.survivalRate, target: 70, unit: '%' },
-  ], [game.biodiversity, game.coastal, game.community, metrics.liveCount, metrics.matureCount, metrics.survivalRate, metrics.verified])
-
-  const completionReady = completionRequirements.every((item) => item.value >= item.target)
+  const mrvCost = getMrvCost(game)
+  const completedChapterIndex = STORY_CHAPTERS.findIndex((chapter, index) => (
+    !game.claimedChapters.includes(index) && chapter.test(game, derived)
+  ))
 
   useEffect(() => {
-    if (completionReady && !game.completed) {
-      setGame((current) => ({ ...current, completed: true }))
-      setShowCompletion(true)
-    }
-  }, [completionReady, game.completed])
-
-  const achievements = [
-    { icon: '🌱', label: 'ต้นแรก', done: game.stats.planted >= 1 },
-    { icon: '🌳', label: 'เรือนยอด', done: metrics.matureCount >= 6 },
-    { icon: '🦀', label: '3 Species', done: metrics.speciesCount >= 3 },
-    { icon: '🚁', label: 'MRV x3', done: game.stats.mrvRuns >= 3 },
-    { icon: '💠', label: 'Carbon 25', done: game.stats.verified >= 25 },
-    { icon: '🏆', label: 'Living Coast', done: game.completed },
-  ]
-
-  const addLog = (state, icon, text) => ({
-    ...state,
-    log: [{ day: state.day, icon, text }, ...state.log].slice(0, 9),
-  })
+    if (completedChapterIndex < 0) return
+    const chapter = STORY_CHAPTERS[completedChapterIndex]
+    setGame((current) => {
+      if (current.claimedChapters.includes(completedChapterIndex)) return current
+      const rewarded = {
+        ...current,
+        coins: current.coins + chapter.reward,
+        claimedChapters: [...current.claimedChapters, completedChapterIndex],
+      }
+      return appendLog(rewarded, `ผ่านบท “${chapter.title}” ได้รับ ${chapter.reward} เหรียญ`, 'reward')
+    })
+    setNotice(`ผ่านบทใหม่: ${chapter.title} · +${chapter.reward} เหรียญ`)
+  }, [completedChapterIndex])
 
   const selectSpecies = (key) => {
-    const species = SPECIES[key]
-    setGame((current) => ({ ...current, selectedSpecies: key }))
-    setNotice(`เลือก${species.name}แล้ว — คลิกแปลงว่างเพื่อปลูก`)
+    setGame((current) => ({ ...current, activeSpecies: key }))
+    setNotice(`เลือก${SPECIES[key].name}แล้ว · คลิกแปลงว่างในฉากเพื่อปลูก`)
   }
 
   const plant = (plotId) => {
-    if (game.event) {
-      setNotice('จัดการเหตุการณ์ที่เกิดขึ้นก่อนปลูกเพิ่ม')
-      return
-    }
-
     setGame((current) => {
       const plot = current.plots.find((item) => item.id === plotId)
       if (!plot || plot.species) return current
-      const species = SPECIES[current.selectedSpecies]
-      const cost = Math.max(28, species.cost - current.upgrades.nursery * 7)
+      const speciesKey = current.activeSpecies
+      const species = SPECIES[speciesKey]
+      const cost = getPlantCost(current, speciesKey)
       if (current.coins < cost) {
-        setNotice('เหรียญไม่พอ ลองทำภารกิจ ขาย Carbon Credit หรือใช้ทุนฉุกเฉิน')
+        setNotice('เหรียญไม่พอ ออกเครดิตหรือขายเครดิตเพื่อเพิ่มงบโครงการ')
         return current
       }
-      const fit = suitability(plot, current.selectedSpecies)
-      const health = fit === 2 ? 96 : fit === 1 ? 82 : 66
+      const fit = suitability(plot, speciesKey)
+      const health = fit === 2 ? 96 : fit === 1 ? 83 : 67
       let next = {
         ...current,
         coins: current.coins - cost,
+        biodiversity: clamp(current.biodiversity + species.biodiversity * 0.35),
+        community: clamp(current.community + 0.25 + current.upgrades.community * 0.2),
         stats: { ...current.stats, planted: current.stats.planted + 1 },
         plots: current.plots.map((item) => item.id === plotId
-          ? { ...item, species: current.selectedSpecies, age: 0, health, dead: false }
+          ? { ...item, species: speciesKey, age: 0, health, dead: false }
           : item),
       }
-      next = addLog(next, '🌱', `ปลูก${species.short}ในแปลง ${plotId} (${plot.tide}/${plot.soil})`)
-      setNotice(`${species.name} ลงแปลง ${plotId} แล้ว · ความเหมาะสม ${fit}/2`)
+      next = appendLog(next, `ปลูก${species.short}ในแปลง ${plotId} · ความเหมาะสม ${fit}/2`, 'plant')
+      setNotice(`${species.name}ถูกปลูกในแปลง ${plotId} · Fit ${fit}/2`)
       return next
+    })
+    setSelectedPlot(plotId)
+  }
+
+  const handlePlotClick = (plotId) => {
+    const plot = game.plots.find((item) => item.id === plotId)
+    setSelectedPlot(plotId)
+    if (plot && !plot.species) plant(plotId)
+    else if (plot?.dead) setNotice(`แปลง ${plotId} ต้องเคลียร์พื้นที่ก่อนปลูกใหม่`)
+    else if (plot) setNotice(`เลือกแปลง ${plotId} · ${SPECIES[plot.species].name}`)
+  }
+
+  const maintainSelected = () => {
+    if (!selected?.species || selected.dead) return
+    setGame((current) => {
+      if (current.coins < 38) {
+        setNotice('ต้องใช้ 38 เหรียญสำหรับบำรุงรักษาแปลง')
+        return current
+      }
+      const next = {
+        ...current,
+        coins: current.coins - 38,
+        community: clamp(current.community + 0.8 + current.upgrades.community * 0.25),
+        plots: current.plots.map((plot) => plot.id === selected.id
+          ? { ...plot, health: clamp(plot.health + 20) }
+          : plot),
+      }
+      setNotice(`บำรุงแปลง ${selected.id} แล้ว · สุขภาพ +20`)
+      return appendLog(next, `ทีมภาคสนามบำรุงแปลง ${selected.id}`, 'care')
     })
   }
 
-  const maintainPlot = (plotId) => {
+  const clearSelected = () => {
+    if (!selected?.dead) return
     setGame((current) => {
-      const plot = current.plots.find((item) => item.id === plotId)
-      if (!plot?.species || plot.dead || plot.health >= 98) return current
-      if (current.coins < 35) {
-        setNotice('ต้องใช้ 35 เหรียญสำหรับดูแลแปลง')
+      if (current.coins < 28) {
+        setNotice('ต้องใช้ 28 เหรียญเพื่อเตรียมพื้นที่ใหม่')
         return current
       }
-      const boosted = clamp(plot.health + 18)
-      let next = {
+      const next = {
         ...current,
-        coins: current.coins - 35,
-        community: clamp(current.community + 0.5),
-        stats: { ...current.stats, maintenance: current.stats.maintenance + 1 },
-        plots: current.plots.map((item) => item.id === plotId ? { ...item, health: boosted } : item),
+        coins: current.coins - 28,
+        plots: current.plots.map((plot) => plot.id === selected.id
+          ? { ...plot, species: null, age: 0, health: 100, dead: false }
+          : plot),
       }
-      next = addLog(next, '🧤', `ทีมภาคสนามดูแลแปลง ${plotId} สุขภาพเพิ่มเป็น ${Math.round(boosted)}%`)
-      setNotice(`ดูแลแปลง ${plotId} แล้ว · สุขภาพ +18`)
-      return next
-    })
-  }
-
-  const clearPlot = (plotId) => {
-    setGame((current) => {
-      const plot = current.plots.find((item) => item.id === plotId)
-      if (!plot?.dead) return current
-      if (current.coins < 20) {
-        setNotice('ต้องใช้ 20 เหรียญเพื่อเตรียมแปลงใหม่')
-        return current
-      }
-      let next = {
-        ...current,
-        coins: current.coins - 20,
-        plots: current.plots.map((item) => item.id === plotId
-          ? { ...item, species: null, age: 0, health: 100, dead: false }
-          : item),
-      }
-      next = addLog(next, '🧹', `เตรียมแปลง ${plotId} ใหม่หลังต้นเดิมไม่รอด`)
-      setNotice(`แปลง ${plotId} พร้อมปลูกใหม่แล้ว`)
-      return next
+      setNotice(`เคลียร์แปลง ${selected.id} แล้ว · เลือกพันธุ์เพื่อปลูกใหม่`)
+      return appendLog(next, `เตรียมแปลง ${selected.id} สำหรับปลูกซ่อม`, 'care')
     })
   }
 
   const nextDay = () => {
-    setGame((current) => {
-      if (current.event) {
-        setNotice('ต้องตัดสินใจเหตุการณ์ปัจจุบันก่อนจบวัน')
-        return current
-      }
+    if (game.event) {
+      setNotice('ต้องตัดสินใจเหตุการณ์ปัจจุบันก่อนจบวัน')
+      return
+    }
 
+    setGame((current) => {
       let carbonGain = 0
-      let bioGain = 0
+      let biodiversityGain = 0
       let coastalGain = 0
-      let newFailures = 0
-      const teamMultiplier = 1 + current.upgrades.community * 0.1
+      let deaths = 0
+      const communityBoost = 1 + current.upgrades.community * 0.08
 
       const plots = current.plots.map((plot) => {
         if (!plot.species || plot.dead) return plot
@@ -499,651 +409,546 @@ function App() {
         const healthDelta = fit === 2 ? 2 : fit === 1 ? -1 : -5
         const health = clamp(plot.health + healthDelta + random)
         const dead = health <= 5
-        if (dead) newFailures += 1
+        if (dead) deaths += 1
 
-        const stageFactor = age < 2 ? 0.3 : age < 5 ? 0.65 : 1
+        const growthFactor = age < 2 ? 0.24 : age < 6 ? 0.62 : 1
         if (!dead) {
-          carbonGain += species.carbon * stageFactor * (health / 100)
-          bioGain += species.biodiversity * stageFactor * 0.22 * teamMultiplier
-          coastalGain += stageFactor * 0.09 * teamMultiplier
+          carbonGain += species.carbon * growthFactor * (health / 100)
+          biodiversityGain += species.biodiversity * growthFactor * 0.18
+          coastalGain += growthFactor * (plot.species === 'rhizophora' ? 0.16 : 0.1)
         }
         return { ...plot, age, health, dead }
       })
 
-      const livingSpecies = new Set(plots.filter((plot) => plot.species && !plot.dead).map((plot) => plot.species)).size
-      if (livingSpecies >= 3) bioGain += 0.8
-
       const nextDayNumber = current.day + 1
-      const shouldTriggerEvent = nextDayNumber % 4 === 0
-      const event = shouldTriggerEvent ? EVENTS[Math.floor(Math.random() * EVENTS.length)] : null
+      const communityIncome = current.community >= 32
+        ? 10 + current.upgrades.community * 8
+        : 0
       const marketDelta = Math.floor(Math.random() * 11) - 5
-      const passiveIncome = current.community >= 30 ? Math.floor(current.community / 20) * 5 : 0
+      const shouldEvent = nextDayNumber % 5 === 0
+      const event = shouldEvent
+        ? EVENTS[Math.floor(Math.random() * EVENTS.length)]
+        : null
 
       let next = {
         ...current,
         day: nextDayNumber,
-        coins: current.coins + passiveIncome,
+        coins: current.coins + communityIncome,
         plots,
         estimatedCarbon: current.estimatedCarbon + carbonGain,
-        biodiversity: clamp(current.biodiversity + bioGain),
+        biodiversity: clamp(current.biodiversity + biodiversityGain),
+        community: clamp(current.community + (current.upgrades.community ? 0.14 * communityBoost : 0)),
         coastal: clamp(current.coastal + coastalGain),
-        lastMarketPrice: current.marketPrice,
-        marketPrice: clamp(current.marketPrice + marketDelta, 62, 120),
+        marketPrice: clamp(current.marketPrice + marketDelta, 58, 128),
         event,
-        stats: { ...current.stats, failed: current.stats.failed + newFailures },
+        stats: { ...current.stats, dead: current.stats.dead + deaths },
       }
-
-      next = addLog(next, '☀️', `Day ${nextDayNumber} · สะสม Estimated Carbon +${carbonGain.toFixed(1)} tCO₂e${passiveIncome ? ` · รายได้ชุมชน +${passiveIncome}` : ''}`)
-      if (newFailures > 0) next = addLog(next, '🥀', `มีต้นไม้ไม่รอด ${newFailures} ต้นจากสภาพพื้นที่`)
-      if (event) next = addLog(next, event.icon, `เกิดเหตุการณ์: ${event.title}`)
-
-      setNotice(event ? 'มีเหตุการณ์ใหม่ในพื้นที่ ต้องตัดสินใจก่อนเดินหน้าต่อ' : 'ผ่านไปอีก 1 วัน ระบบนิเวศกำลังเปลี่ยนแปลง')
+      next = appendLog(next, `Day ${nextDayNumber}: สะสมคาร์บอนประมาณ +${carbonGain.toFixed(1)} tCO₂e`, 'day')
+      if (communityIncome) next = appendLog(next, `ชุมชนสร้างรายได้กลับเข้าโครงการ +${communityIncome} เหรียญ`, 'reward')
+      if (deaths) next = appendLog(next, `มีต้นไม้ไม่รอด ${deaths} ต้น ตรวจ Fit และสุขภาพแปลง`, 'warning')
+      setNotice(event ? 'มีเหตุการณ์ใหม่เกิดขึ้นในพื้นที่' : `เข้าสู่ Day ${nextDayNumber} · Carbon +${carbonGain.toFixed(1)}`)
       return next
     })
   }
 
   const verifyCarbon = () => {
     setGame((current) => {
-      const cost = Math.max(65, 120 - current.upgrades.drone * 18)
+      const cost = getMrvCost(current)
       if (current.estimatedCarbon < 5) {
-        setNotice('ต้องมี Estimated Carbon อย่างน้อย 5 tCO₂e ก่อนส่งตรวจ MRV')
+        setNotice('ต้องมี Estimated Carbon อย่างน้อย 5 tCO₂e ก่อนส่งตรวจ')
         return current
       }
       if (current.coins < cost) {
         setNotice(`ต้องใช้ ${cost} เหรียญสำหรับ Drone + Field MRV`)
         return current
       }
-
-      const verificationFactor = Math.min(0.98, 0.88 + current.upgrades.drone * 0.025 + Math.random() * 0.045)
-      const issued = current.estimatedCarbon * verificationFactor
+      const baseFactor = 0.84 + current.upgrades.mrv * 0.025
+      const factor = Math.min(0.97, baseFactor + Math.random() * 0.055)
+      const issued = current.estimatedCarbon * factor
       let next = {
         ...current,
         coins: current.coins - cost,
         estimatedCarbon: 0,
         credits: current.credits + issued,
-        community: clamp(current.community + 1.5 + current.upgrades.community * 0.5),
-        stats: {
-          ...current.stats,
-          verified: current.stats.verified + issued,
-          mrvRuns: current.stats.mrvRuns + 1,
-        },
+        community: clamp(current.community + 1.2),
+        stats: { ...current.stats, verified: current.stats.verified + issued },
       }
-      next = addLog(next, '🚁', `MRV รอบที่ ${next.stats.mrvRuns} ผ่าน · ออกเครดิต ${issued.toFixed(1)} tCO₂e`)
-      setNotice(`Verified ${issued.toFixed(1)} tCO₂e — เครดิตพร้อมถือหรือขาย`)
+      next = appendLog(next, `MRV ผ่าน ออกเครดิต ${issued.toFixed(1)} tCO₂e`, 'carbon')
+      setNotice(`Verified ${issued.toFixed(1)} tCO₂e · พร้อมถือหรือขายเครดิต`)
       return next
     })
   }
 
-  const sellCredit = (amount) => {
+  const sellCredits = (requested) => {
     setGame((current) => {
-      const sellable = amount === 'all' ? Math.floor(current.credits) : Math.min(amount, Math.floor(current.credits))
-      if (sellable <= 0) {
+      const amount = requested === 'all'
+        ? Math.floor(current.credits * 10) / 10
+        : Math.min(requested, Math.floor(current.credits))
+      if (!amount || amount <= 0) {
         setNotice('ยังไม่มี Verified Carbon Credit เพียงพอสำหรับขาย')
         return current
       }
-      const revenue = sellable * current.marketPrice
-      let next = {
+      const revenue = Math.round(amount * current.marketPrice)
+      const next = {
         ...current,
-        credits: current.credits - sellable,
         coins: current.coins + revenue,
-        stats: { ...current.stats, sold: current.stats.sold + sellable },
+        credits: Math.max(0, current.credits - amount),
+        stats: { ...current.stats, sold: current.stats.sold + amount },
       }
-      next = addLog(next, '💠', `ขาย ${sellable} Carbon Credit ที่ ${current.marketPrice} เหรียญ ได้ ${revenue} เหรียญ`)
-      setNotice(`ขายเครดิตแล้ว +${revenue} เหรียญ`)
-      return next
+      setNotice(`ขาย ${amount.toFixed(1)} เครดิต ได้ ${revenue} เหรียญ`)
+      return appendLog(next, `ขาย Carbon Credit ${amount.toFixed(1)} tCO₂e`, 'carbon')
     })
   }
 
-  const upgrade = (key) => {
+  const buyUpgrade = (key) => {
     setGame((current) => {
       const level = current.upgrades[key]
       if (level >= 3) {
-        setNotice(`${UPGRADES[key].name} ถึงระดับสูงสุดแล้ว`)
+        setNotice(`${UPGRADE_INFO[key].name}ถึงระดับสูงสุดแล้ว`)
         return current
       }
-      const cost = upgradeCost(key, level)
+      const cost = UPGRADE_INFO[key].baseCost * (level + 1)
       if (current.coins < cost) {
-        setNotice(`ต้องใช้ ${cost} เหรียญเพื่ออัปเกรด ${UPGRADES[key].name}`)
+        setNotice(`ต้องใช้ ${cost} เหรียญสำหรับอัปเกรดนี้`)
         return current
       }
-
-      const newLevel = level + 1
+      const nextLevel = level + 1
       let next = {
         ...current,
         coins: current.coins - cost,
-        upgrades: { ...current.upgrades, [key]: newLevel },
+        upgrades: { ...current.upgrades, [key]: nextLevel },
       }
-      if (key === 'community') {
-        next.community = clamp(next.community + 4)
-        next.biodiversity = clamp(next.biodiversity + 1.5)
-      }
-      next = addLog(next, UPGRADES[key].icon, `${UPGRADES[key].name} อัปเกรดเป็น Lv.${newLevel}`)
-      setNotice(`${UPGRADES[key].name} Lv.${newLevel} พร้อมใช้งาน`)
-      return next
+      if (key === 'community') next.community = clamp(current.community + 5)
+      if (key === 'nursery') next.biodiversity = clamp(current.biodiversity + 1.5)
+      if (key === 'mrv') next.coastal = clamp(current.coastal + 1)
+      setNotice(`${UPGRADE_INFO[key].name} อัปเกรดเป็น Lv.${nextLevel}`)
+      return appendLog(next, `อัปเกรด${UPGRADE_INFO[key].name}เป็น Lv.${nextLevel}`, 'reward')
     })
   }
 
-  const claimChapter = (chapterId) => {
-    setGame((current) => {
-      const chapter = CHAPTERS.find((item) => item.id === chapterId)
-      const currentMetrics = getMetrics(current)
-      if (!chapter || current.claimedChapters.includes(chapterId) || !chapter.ready(currentMetrics)) return current
-
-      const reward = chapter.reward
-      let next = {
-        ...current,
-        coins: current.coins + (reward.coins || 0),
-        biodiversity: clamp(current.biodiversity + (reward.biodiversity || 0)),
-        community: clamp(current.community + (reward.community || 0)),
-        coastal: clamp(current.coastal + (reward.coastal || 0)),
-        claimedChapters: [...current.claimedChapters, chapterId],
-      }
-      next = addLog(next, '🎁', `รับรางวัลบท “${chapter.title}” +${reward.coins || 0} เหรียญ`)
-      setNotice(`รับรางวัล ${chapter.title} แล้ว`)
-      return next
-    })
-  }
-
-  const resolveEvent = (choice) => {
+  const resolveEvent = (choiceKey) => {
     setGame((current) => {
       if (!current.event) return current
       const event = current.event
-      const chosen = event.choices.find((item) => item.key === choice)
-      if (!chosen || current.coins < chosen.cost) {
+      const choice = event.choices.find((item) => item.key === choiceKey)
+      if (!choice || current.coins < choice.cost) {
         setNotice('เหรียญไม่พอสำหรับตัวเลือกนี้')
         return current
       }
 
-      let next = { ...current, coins: current.coins - chosen.cost, event: null }
-      let logText = ''
+      let next = { ...current, coins: current.coins - choice.cost, event: null }
+      let text = ''
 
       if (event.id === 'storm') {
-        const damage = choice === 'protect' ? 4 : 17
-        let eventFailures = 0
+        const damage = choiceKey === 'protect' ? 3 : 15
         next.plots = current.plots.map((plot) => {
-          if (!plot.species || plot.dead || plot.age >= 5) return plot
+          if (!plot.species || plot.dead || plot.age >= 6) return plot
           const health = clamp(plot.health - damage)
-          const dead = health <= 5
-          if (dead && !plot.dead) eventFailures += 1
-          return { ...plot, health, dead }
+          return { ...plot, health, dead: health <= 5 }
         })
-        next.stats = { ...current.stats, failed: current.stats.failed + eventFailures }
-        if (choice === 'protect') next.coastal = clamp(current.coastal + 3)
-        logText = choice === 'protect'
-          ? 'เสริมแนวป้องกันก่อนมรสุม ต้นอ่อนได้รับผลกระทบน้อยลง'
-          : 'รับมรสุมโดยไม่ป้องกัน ต้นอ่อนเสียสุขภาพอย่างมาก'
+        if (choiceKey === 'protect') next.coastal = clamp(current.coastal + 4)
+        text = choiceKey === 'protect'
+          ? 'เสริมแนวป้องกัน ต้นอ่อนได้รับผลกระทบน้อยลง'
+          : 'ปล่อยพื้นที่รับมรสุม ต้นอ่อนเสียสุขภาพ'
       }
 
       if (event.id === 'trash') {
-        if (choice === 'clean') {
+        if (choiceKey === 'clean') {
           next.biodiversity = clamp(current.biodiversity + 5)
           next.community = clamp(current.community + 4)
-          logText = 'ชุมชนช่วยกันเก็บขยะ Biodiversity +5 และ Community +4'
+          text = 'ชุมชนช่วยเก็บขยะ Biodiversity และ Community เพิ่มขึ้น'
         } else {
           next.biodiversity = clamp(current.biodiversity - 4)
-          logText = 'ขยะยังอยู่ในพื้นที่ Biodiversity -4'
+          text = 'ขยะยังอยู่ในพื้นที่ Biodiversity ลดลง'
         }
       }
 
-      if (event.id === 'nursery') {
-        if (choice === 'invest') {
-          if (current.upgrades.nursery < 3) {
-            next.upgrades = { ...current.upgrades, nursery: current.upgrades.nursery + 1 }
-            next.community = clamp(current.community + 5)
-            logText = `Nursery อัปเกรดเป็น Lv.${next.upgrades.nursery} และ Community +5`
-          } else {
-            next.community = clamp(current.community + 6)
-            logText = 'Nursery เต็มระดับแล้ว เงินรอบนี้ใช้ฝึกคนในชุมชน Community +6'
-          }
+      if (event.id === 'fishers') {
+        if (choiceKey === 'partner') {
+          next.community = clamp(current.community + 8)
+          next.coastal = clamp(current.coastal + 2)
+          text = 'ตั้งทีมเฝ้าระวังร่วมกับชุมชนสำเร็จ'
         } else {
-          logText = 'ยังไม่ลงทุน Nursery ในรอบนี้'
+          next.coins = current.coins + 70
+          next.community = clamp(current.community - 2)
+          text = 'รับรายได้ระยะสั้น แต่ความร่วมมือชุมชนลดลง'
+        }
+      }
+
+      if (event.id === 'kingtide') {
+        if (choiceKey === 'reinforce') {
+          next.coastal = clamp(current.coastal + 10)
+          text = 'แนวป้องกันธรรมชาติแข็งแรงขึ้น Coastal +10'
+        } else {
+          next.plots = current.plots.map((plot) => (
+            plot.species && !plot.dead && plot.age < 5
+              ? { ...plot, health: clamp(plot.health - 8) }
+              : plot
+          ))
+          text = 'ติดตามโดยไม่แทรกแซง ต้นอ่อนเสียสุขภาพบางส่วน'
         }
       }
 
       if (event.id === 'wildlife') {
-        next.biodiversity = clamp(current.biodiversity + 6)
-        logText = 'บันทึกการกลับมาของสัตว์น้ำ Biodiversity +6'
+        const gain = choiceKey === 'survey' ? 8 : 2
+        next.biodiversity = clamp(current.biodiversity + gain)
+        text = `บันทึกการกลับมาของสัตว์น้ำ Biodiversity +${gain}`
       }
 
-      if (event.id === 'fishers') {
-        if (choice === 'partner') {
-          next.community = clamp(current.community + 8)
-          next.biodiversity = clamp(current.biodiversity + 2)
-          logText = 'ทำข้อตกลงกับกลุ่มประมง Community +8 และ Biodiversity +2'
+      if (event.id === 'grant') {
+        if (choiceKey === 'accept') {
+          next.coins = current.coins + 240
+          next.community = clamp(current.community + 4)
+          text = 'รับทุนแบบมีส่วนร่วม งบโครงการและ Community เพิ่มขึ้น'
         } else {
-          next.community = clamp(current.community - 2)
-          logText = 'ยังไม่ร่วมมือกับกลุ่มประมง Community -2'
-        }
-      }
-
-      if (event.id === 'erosion') {
-        if (choice === 'barrier') {
-          next.coastal = clamp(current.coastal + 9)
+          next.biodiversity = clamp(current.biodiversity + 1)
           next.community = clamp(current.community + 1)
-          logText = 'ทำแนวลดแรงคลื่น Coastal resilience +9'
-        } else {
-          next.coastal = clamp(current.coastal - 5)
-          logText = 'การกัดเซาะดำเนินต่อ Coastal resilience -5'
+          text = 'ดำเนินงานอิสระ ทุกมิติ Impact เพิ่มเล็กน้อย'
         }
       }
 
-      setNotice(logText)
-      return addLog(next, event.icon, logText)
+      setNotice(text)
+      return appendLog(next, text, 'event')
     })
-  }
-
-  const claimEmergencyGrant = () => {
-    setGame((current) => {
-      if (current.emergencyGrantUsed) return current
-      let next = {
-        ...current,
-        coins: current.coins + 220,
-        community: clamp(current.community - 2),
-        emergencyGrantUsed: true,
-      }
-      next = addLog(next, '🛟', 'รับทุนฟื้นฟูฉุกเฉิน +220 เหรียญ เพื่อป้องกันโครงการติดทางตัน')
-      setNotice('ได้รับทุนฉุกเฉิน 220 เหรียญ ใช้ให้คุ้มกับรอบฟื้นฟูถัดไป')
-      return next
-    })
-  }
-
-  const finishTutorial = () => {
-    localStorage.setItem(TUTORIAL_KEY, '1')
-    setTutorialStep(-1)
   }
 
   const resetGame = () => {
-    setGame(createInitialGame())
+    const fresh = createInitialGame()
+    setGame(fresh)
     setSelectedPlot(null)
-    setShowCompletion(false)
-    setNotice('เริ่มโครงการใหม่แล้ว')
+    setSandbox(false)
+    setNotice('เริ่มโครงการใหม่แล้ว · เลือกพันธุ์และคลิกพื้นที่ 3D')
   }
 
-  const projectGrade = metrics.impactScore >= 70 && metrics.survivalRate >= 85
-    ? 'A'
-    : metrics.impactScore >= 55 && metrics.survivalRate >= 75
-      ? 'B'
-      : 'C'
-
-  const needsEmergencyGrant = !game.emergencyGrantUsed
-    && game.coins < 55
-    && game.credits < 1
-    && metrics.liveCount < 2
+  const closeHelp = () => {
+    localStorage.setItem('mangrove-bay-3d-help-seen', '1')
+    setShowHelp(false)
+  }
 
   return (
-    <div className="app complete-game">
-      <header className="topbar">
-        <div className="brand">
-          <div className="brand-mark">M</div>
-          <div>
-            <strong>MANGROVE BAY</strong>
-            <span>BLUE CARBON RESTORATION</span>
-          </div>
-        </div>
-        <div className="top-actions">
-          <div className="mini-stat"><span>🪙</span><b>{Math.round(game.coins)}</b></div>
-          <div className="mini-stat carbon"><span>💠</span><b>{game.credits.toFixed(1)}</b><small>credits</small></div>
-          <div className="level-pill"><span>LV</span><b>{metrics.level}</b></div>
-          <button className="ghost-button" onClick={() => setTutorialStep(0)}>วิธีเล่น</button>
-          <button className="ghost-button" onClick={resetGame}>เริ่มใหม่</button>
-        </div>
-      </header>
+    <div className="game3d-shell">
+      <MangroveWorld3D
+        plots={game.plots}
+        selectedPlot={selectedPlot}
+        activeSpecies={game.activeSpecies}
+        onPlotClick={handlePlotClick}
+        onClearSelection={() => setSelectedPlot(null)}
+        day={game.day}
+        upgrades={game.upgrades}
+      />
 
-      <div className="campaign-strip">
-        <div>
-          <span>เป้าหมายหลัก</span>
-          <b>ฟื้นฟูชายฝั่งให้ผ่าน Living Coast Standard</b>
-        </div>
-        <div className="campaign-progress">
-          <span style={{ width: `${completionRequirements.filter((item) => item.value >= item.target).length / completionRequirements.length * 100}%` }} />
-        </div>
-        <strong>{completionRequirements.filter((item) => item.value >= item.target).length}/{completionRequirements.length}</strong>
-      </div>
-
-      <main className="game-layout">
-        <section className="main-column">
-          <div className="scene-header">
-            <div>
-              <p className="eyebrow">RESTORATION SITE · YEAR {year}</p>
-              <h1>ฟื้นคืนผืนป่าชายเลน</h1>
-              <p className="scene-subtitle">Day {game.day} · {tidePhase} · เลือกพันธุ์ให้เหมาะกับน้ำและดิน</p>
-            </div>
-            <div className="day-actions">
-              {livelihoodIncome > 0 && <span className="income-note">ชุมชนสร้างรายได้ +{livelihoodIncome}/วัน</span>}
-              <button className="next-day" onClick={nextDay} disabled={Boolean(game.event)}>
-                จบวันนี้ <span>→</span>
-              </button>
-            </div>
+      <div className="game-ui">
+        <header className="top-hud">
+          <div className="brand-plaque">
+            <span className="brand-emblem">M</span>
+            <span>
+              <strong>MANGROVE BAY</strong>
+              <small>BLUE CARBON RESTORATION</small>
+            </span>
           </div>
 
-          <div className="notice-bar"><span>●</span>{notice}</div>
-
-          <div className="world-card">
-            <div className="waterline">
-              <div className="sun">☀</div>
-              <div className="horizon-copy">Mangrove Bay · Coastal Wetland</div>
-              <div className="wildlife wildlife-a">{game.biodiversity >= 20 ? '🦀' : ''}</div>
-              <div className="wildlife wildlife-b">{game.biodiversity >= 35 ? '🐟' : ''}</div>
-              <div className="wildlife wildlife-c">{game.biodiversity >= 50 ? '🦆' : ''}</div>
-              <div className="wave wave-a">～～～～～～～～～～～～～～</div>
-              <div className="wave wave-b">～～～～～～～～～～～～～～</div>
-            </div>
-
-            <div className="site-status-row">
-              <span>🌱 รอด {metrics.liveCount}/16</span>
-              <span>🌳 โตเต็มที่ {metrics.matureCount}</span>
-              <span>🧬 Species {metrics.speciesCount}/3</span>
-              <span>❤️ Survival {metrics.survivalRate}%</span>
-            </div>
-
-            <div className="plot-grid">
-              {game.plots.map((plot) => {
-                const empty = !plot.species
-                const fit = empty ? suitability(plot, game.selectedSpecies) : suitability(plot, plot.species)
-                const stage = stageFor(plot)
-                const cost = plantingCost(selectedSpecies)
-                return (
-                  <button
-                    key={plot.id}
-                    className={`plot plot-${stage} ${selectedPlot === plot.id ? 'selected' : ''}`}
-                    onClick={() => {
-                      setSelectedPlot(plot.id)
-                      if (empty) plant(plot.id)
-                    }}
-                    aria-label={`แปลง ${plot.id} ${stageLabel(plot)}`}
-                  >
-                    <div className="plot-meta">
-                      <span>#{String(plot.id).padStart(2, '0')}</span>
-                      <span className={`fit fit-${fit}`}>{'●'.repeat(fit)}{'○'.repeat(2 - fit)}</span>
-                    </div>
-                    <div className="tree-visual">{treeIcon(plot)}</div>
-                    {empty ? (
-                      <>
-                        <b className="empty-label">ปลูก {selectedSpecies.short}</b>
-                        <small>{cost} 🪙 · {plot.tide}/{plot.soil}</small>
-                      </>
-                    ) : (
-                      <>
-                        <b>{SPECIES[plot.species].short}</b>
-                        <small>{stageLabel(plot)} · {plot.age} วัน</small>
-                        <div className="health-track"><span style={{ width: `${plot.health}%` }} /></div>
-                        <small className="health-label">สุขภาพ {Math.round(plot.health)}%</small>
-                      </>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-            <div className="shore-labels">
-              <span>← โซนน้ำต่ำ</span><span>โซนน้ำกลาง</span><span>โซนน้ำสูง →</span>
-            </div>
+          <div className="resource-bar" aria-label="ทรัพยากรโครงการ">
+            <ResourcePill icon="●" label="เหรียญ" value={Math.round(game.coins)} tone="coin" />
+            <ResourcePill icon="◆" label="เครดิต" value={game.credits.toFixed(1)} tone="carbon" />
+            <ResourcePill icon="✦" label="Impact" value={derived.impact} tone="impact" />
           </div>
 
-          <section className="species-panel">
-            <div className="section-heading">
-              <div><p className="eyebrow">COMMUNITY NURSERY · LV.{game.upgrades.nursery}</p><h2>เลือกพันธุ์ไม้</h2></div>
-              <span className="legend">●● เหมาะมาก &nbsp; ●○ พอใช้ &nbsp; ○○ เสี่ยง</span>
+          <div className="day-controls">
+            <button className="round-ui-button" onClick={() => setShowHelp(true)} aria-label="เปิดวิธีเล่น">?</button>
+            <button className="round-ui-button" onClick={() => setShowUpgrades(true)} aria-label="เปิดอัปเกรด">↑</button>
+            <div className="day-badge"><small>YEAR {year}</small><b>DAY {game.day}</b></div>
+            <button className="next-day-button" onClick={nextDay}>
+              <span>จบวันนี้</span><b>›</b>
+            </button>
+          </div>
+        </header>
+
+        <aside className="left-stack">
+          <button className="quest-card" onClick={() => setShowGoals(true)}>
+            <span className="quest-pin">★</span>
+            <span>
+              <small>STORY PROGRESS</small>
+              <strong>{game.claimedChapters.length}/4 บท</strong>
+              <em>{STORY_CHAPTERS.find((_, index) => !game.claimedChapters.includes(index))?.text || 'Living Coast สำเร็จ'}</em>
+            </span>
+            <b>›</b>
+          </button>
+
+          <button className="mini-action-card" onClick={() => setShowLog(true)}>
+            <span>≡</span><b>บันทึกภาคสนาม</b><small>{game.log.length}</small>
+          </button>
+        </aside>
+
+        <aside className="right-dashboard">
+          <section className="dashboard-panel carbon-panel">
+            <div className="panel-title-row">
+              <span><small>CARBON PIPELINE</small><strong>Drone + Field MRV</strong></span>
+              <i>◆</i>
             </div>
-            <div className="species-list">
-              {Object.entries(SPECIES).map(([key, species]) => (
-                <button
-                  key={key}
-                  className={`species-card ${game.selectedSpecies === key ? 'active' : ''}`}
-                  onClick={() => selectSpecies(key)}
-                >
-                  <span className="species-icon">{species.matureIcon}</span>
-                  <span className="species-copy">
-                    <b>{species.name}</b>
-                    <i>{species.latin}</i>
-                    <small>{species.note}</small>
-                  </span>
-                  <span className="species-cost">{plantingCost(species)}<small>🪙 / ต้น</small></span>
-                </button>
-              ))}
+            <div className="carbon-readout">
+              <span>Estimated</span>
+              <strong>{game.estimatedCarbon.toFixed(1)}</strong>
+              <small>tCO₂e</small>
             </div>
+            <div className="pipeline-steps">
+              <span className="done">ปลูก</span><i>›</i><span className={game.estimatedCarbon >= 5 ? 'done' : ''}>ติดตาม</span><i>›</i><span>Verify</span><i>›</i><span>Credit</span>
+            </div>
+            <button className="primary-game-button" onClick={verifyCarbon}>
+              <span>ส่งตรวจ MRV</span><b>{mrvCost} ●</b>
+            </button>
           </section>
 
-          <section className="upgrade-section">
-            <div className="section-heading">
-              <div><p className="eyebrow">PROJECT UPGRADES</p><h2>พัฒนาโครงการ</h2></div>
-              <span className="legend">อัปเกรดได้สูงสุด Lv.3</span>
+          <section className="dashboard-panel impact-panel">
+            <div className="panel-title-row">
+              <span><small>NON-CARBON BENEFITS</small><strong>สุขภาพพื้นที่</strong></span>
+              <i>{derived.survivalRate}%</i>
             </div>
-            <div className="upgrade-grid">
-              {Object.entries(UPGRADES).map(([key, item]) => {
-                const level = game.upgrades[key]
-                const cost = upgradeCost(key, level)
-                return (
-                  <article className="upgrade-card" key={key}>
-                    <div className="upgrade-icon">{item.icon}</div>
-                    <div className="upgrade-copy">
-                      <span>LV.{level}/3</span>
-                      <b>{item.name}</b>
-                      <small>{item.description}</small>
-                    </div>
-                    <button onClick={() => upgrade(key)} disabled={level >= 3}>
-                      {level >= 3 ? 'MAX' : `${cost} 🪙`}
-                    </button>
-                  </article>
-                )
-              })}
-            </div>
+            <ImpactMeter label="Biodiversity" value={game.biodiversity} icon="B" />
+            <ImpactMeter label="Community" value={game.community} icon="C" />
+            <ImpactMeter label="Coastal" value={game.coastal} icon="W" />
           </section>
 
-          <section className="achievement-section">
-            <div className="section-heading compact">
-              <div><p className="eyebrow">COLLECTION</p><h2>ตราความสำเร็จ</h2></div>
-            </div>
-            <div className="achievement-grid">
-              {achievements.map((item) => (
-                <div className={`achievement ${item.done ? 'done' : ''}`} key={item.label}>
-                  <span>{item.icon}</span><b>{item.label}</b>
-                </div>
-              ))}
-            </div>
-          </section>
-        </section>
-
-        <aside className="sidebar">
-          <section className="impact-card">
-            <div className="impact-score">
-              <div>
-                <p className="eyebrow">PROJECT IMPACT</p>
-                <strong>{metrics.impactScore}</strong><span>/100</span>
-              </div>
-              <div className="impact-badge">{metrics.impactScore >= 70 ? 'THRIVING' : metrics.impactScore >= 40 ? 'GROWING' : 'RESTORING'}</div>
-            </div>
-            <Metric icon="🦋" label="Biodiversity" value={game.biodiversity} />
-            <Metric icon="🤝" label="Community" value={game.community} />
-            <Metric icon="🌊" label="Coastal resilience" value={game.coastal} />
-            <div className="survival-row"><span>Survival rate</span><b>{metrics.survivalRate}%</b></div>
-          </section>
-
-          <section className="panel mrv-panel">
-            <div className="section-heading compact">
-              <div><p className="eyebrow">CARBON PIPELINE</p><h2>MRV</h2></div>
-              <span className="satellite">🚁</span>
-            </div>
-            <div className="carbon-number">
-              <span>Estimated</span><strong>{game.estimatedCarbon.toFixed(1)}</strong><small>tCO₂e</small>
-            </div>
-            <div className="flow-line"><span className="done">ปลูก</span><i>→</i><span>ติดตาม</span><i>→</i><span>Verify</span><i>→</i><span>Credit</span></div>
-            <button className="primary-button" onClick={verifyCarbon}>ส่ง Drone + Field ตรวจ MRV <span>{mrvCost} 🪙</span></button>
-            <div className="mrv-meta"><span>Drone Lv.{game.upgrades.drone}</span><span>ตรวจแล้ว {game.stats.mrvRuns} รอบ</span></div>
-            <p className="fine-print">ค่าคาร์บอนและ Verification เป็นค่าจำลองเพื่อ gameplay ไม่ใช่การคำนวณเครดิตจริง</p>
-          </section>
-
-          <section className="panel market-panel">
-            <div className="market-head">
-              <div><p className="eyebrow">CARBON MARKET</p><h2>ตลาดเครดิต</h2></div>
-              <b>{game.marketPrice} 🪙 <span className={marketTrend >= 0 ? 'trend-up' : 'trend-down'}>{marketTrend >= 0 ? '▲' : '▼'}{Math.abs(marketTrend)}</span></b>
-            </div>
-            <div className="market-row"><span>เครดิตที่ถือ</span><strong>{game.credits.toFixed(1)} tCO₂e</strong></div>
+          <section className="dashboard-panel market-panel">
+            <div className="market-price"><span><small>MARKET PRICE</small><strong>{game.marketPrice} ●</strong></span><em>/ tCO₂e</em></div>
             <div className="market-actions">
-              <button className="secondary-button" onClick={() => sellCredit(1)}>ขาย 1</button>
-              <button className="secondary-button" onClick={() => sellCredit('all')}>ขายทั้งหมด</button>
-            </div>
-          </section>
-
-          <section className="panel mission-panel">
-            <p className="eyebrow">RESTORATION STORY</p>
-            <h2>บทของโครงการ</h2>
-            <div className="chapter-list">
-              {CHAPTERS.map((chapter) => {
-                const ready = chapter.ready(metrics)
-                const claimed = game.claimedChapters.includes(chapter.id)
-                return (
-                  <div className={`chapter-card ${claimed ? 'claimed' : ready ? 'ready' : ''}`} key={chapter.id}>
-                    <div><b>{claimed ? '✓' : ready ? '!' : '○'} {chapter.title}</b><small>{chapter.goal}</small></div>
-                    {ready && !claimed && <button onClick={() => claimChapter(chapter.id)}>รับรางวัล</button>}
-                    {claimed && <span>รับแล้ว</span>}
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-
-          <section className="panel goal-panel">
-            <p className="eyebrow">LIVING COAST STANDARD</p>
-            <h2>เงื่อนไขจบเกม</h2>
-            <div className="goal-list">
-              {completionRequirements.map((item) => {
-                const done = item.value >= item.target
-                return (
-                  <div className={done ? 'goal-done' : ''} key={item.label}>
-                    <span>{done ? '✓' : '○'} {item.label}</span>
-                    <b>{typeof item.value === 'number' && !Number.isInteger(item.value) ? item.value.toFixed(1) : Math.round(item.value)}/{item.target}{item.unit}</b>
-                  </div>
-                )
-              })}
-            </div>
-          </section>
-
-          {needsEmergencyGrant && (
-            <section className="panel rescue-panel">
-              <p className="eyebrow">PROJECT RECOVERY</p>
-              <h2>โครงการใกล้ติดทางตัน</h2>
-              <p>รับทุนฉุกเฉินได้หนึ่งครั้ง เพื่อให้ยังมีทางกลับมาฟื้นฟูต่อ</p>
-              <button className="primary-button" onClick={claimEmergencyGrant}>รับทุน +220 🪙</button>
-            </section>
-          )}
-
-          {currentPlot?.species && (
-            <section className="panel selected-panel">
-              <p className="eyebrow">SELECTED PLOT #{String(currentPlot.id).padStart(2, '0')}</p>
-              <h2>{SPECIES[currentPlot.species].name}</h2>
-              <div className="detail-grid">
-                <span>น้ำ <b>{currentPlot.tide}</b></span>
-                <span>ดิน <b>{currentPlot.soil}</b></span>
-                <span>อายุ <b>{currentPlot.age} วัน</b></span>
-                <span>Fit <b>{suitability(currentPlot, currentPlot.species)}/2</b></span>
-                <span>สุขภาพ <b>{Math.round(currentPlot.health)}%</b></span>
-                <span>สถานะ <b>{stageLabel(currentPlot)}</b></span>
-              </div>
-              {!currentPlot.dead && currentPlot.health < 98 && (
-                <button className="secondary-button plot-action" onClick={() => maintainPlot(currentPlot.id)}>ดูแลแปลง · 35 🪙</button>
-              )}
-              {currentPlot.dead && (
-                <button className="secondary-button plot-action danger" onClick={() => clearPlot(currentPlot.id)}>เตรียมปลูกใหม่ · 20 🪙</button>
-              )}
-            </section>
-          )}
-
-          <section className="panel log-panel">
-            <p className="eyebrow">FIELD LOG</p>
-            <h2>บันทึกล่าสุด</h2>
-            <div className="log-list">
-              {game.log.map((item, index) => (
-                <div className="log-item" key={`${item.day}-${index}-${item.text}`}>
-                  <span>{item.icon}</span><p>{item.text}<small>DAY {item.day}</small></p>
-                </div>
-              ))}
+              <button onClick={() => sellCredits(1)}>ขาย 1</button>
+              <button onClick={() => sellCredits(5)}>ขาย 5</button>
+              <button onClick={() => sellCredits('all')}>ขายทั้งหมด</button>
             </div>
           </section>
         </aside>
-      </main>
 
-      <footer className="game-footer">
-        <span>Auto-save ใน browser</span>
-        <span>Simulation values are for gameplay only</span>
-        <span>Plant → Grow → Monitor → Verify → Create Impact</span>
-      </footer>
+        {selected && (
+          <section className="selected-plot-card">
+            <button className="selected-close" onClick={() => setSelectedPlot(null)} aria-label="ปิดรายละเอียด">×</button>
+            <small>SELECTED PLOT #{String(selected.id).padStart(2, '0')}</small>
+            <strong>{selected.species ? SPECIES[selected.species].name : 'แปลงว่าง'}</strong>
+            <div className="selected-tags">
+              <span>น้ำ {selected.tide}</span><span>ดิน {selected.soil}</span>
+              {selected.species && <span>Fit {suitability(selected, selected.species)}/2</span>}
+            </div>
+            {selected.species ? (
+              <>
+                <div className="health-row"><span>สุขภาพ</span><b>{Math.round(selected.health)}%</b></div>
+                <div className="health-bar"><span style={{ width: `${selected.health}%` }} /></div>
+                <div className="selected-actions">
+                  {selected.dead
+                    ? <button onClick={clearSelected}>เคลียร์แปลง · 28 ●</button>
+                    : <button onClick={maintainSelected}>บำรุงรักษา · 38 ●</button>}
+                </div>
+              </>
+            ) : (
+              <p>เลือกพันธุ์ด้านล่างแล้วคลิกแปลงนี้เพื่อปลูก</p>
+            )}
+          </section>
+        )}
+
+        <nav className="plant-dock" aria-label="เลือกพันธุ์ไม้">
+          <div className="dock-caption"><small>NURSERY LV.{game.upgrades.nursery}</small><strong>เลือกพันธุ์แล้วคลิกแปลง</strong></div>
+          {Object.entries(SPECIES).map(([key, species]) => {
+            const cost = getPlantCost(game, key)
+            return (
+              <button
+                key={key}
+                className={`species-tool ${game.activeSpecies === key ? 'active' : ''}`}
+                onClick={() => selectSpecies(key)}
+                style={{ '--species-tint': species.tint }}
+              >
+                <span>{species.icon}</span>
+                <b>{species.short}</b>
+                <small>{cost} ●</small>
+              </button>
+            )
+          })}
+          <button className="dock-more" onClick={() => setShowUpgrades(true)}>
+            <span>+</span><b>สิ่งปลูกสร้าง</b><small>อัปเกรด</small>
+          </button>
+        </nav>
+
+        <div className="notice-toast"><span>i</span>{notice}</div>
+        <div className="camera-tip">ลากฉากเพื่อหมุน · เลื่อนเมาส์เพื่อซูม · คลิกแปลงเพื่อปลูก</div>
+      </div>
 
       {game.event && (
-        <div className="event-backdrop">
-          <div className="event-modal">
-            <span className="event-icon">{game.event.icon}</span>
-            <p className="eyebrow">{game.event.eyebrow}</p>
+        <ModalBackdrop>
+          <div className="event-modal game-modal">
+            <div className="modal-icon">{game.event.icon}</div>
+            <small>{game.event.label}</small>
             <h2>{game.event.title}</h2>
             <p>{game.event.text}</p>
-            <div className="event-choices">
+            <div className="choice-list">
               {game.event.choices.map((choice) => (
                 <button
                   key={choice.key}
                   onClick={() => resolveEvent(choice.key)}
                   disabled={game.coins < choice.cost}
                 >
-                  <b>{choice.label}</b><span>{choice.hint}</span>
+                  <span><b>{choice.label}</b><small>{choice.hint}</small></span><i>›</i>
                 </button>
               ))}
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
-      {tutorialStep >= 0 && (
-        <div className="tutorial-backdrop">
-          <div className="tutorial-modal">
-            <div className="tutorial-progress">
-              {TUTORIAL.map((_, index) => <span className={index <= tutorialStep ? 'active' : ''} key={index} />)}
+      {showHelp && (
+        <ModalBackdrop>
+          <div className="help-modal game-modal">
+            <button className="modal-close" onClick={closeHelp}>×</button>
+            <small>HOW TO PLAY</small>
+            <h2>ฟื้นป่าชายเลนในโลก 3D</h2>
+            <div className="help-steps">
+              <HelpStep number="1" title="เลือกพันธุ์" text="พันธุ์แต่ละชนิดเหมาะกับระดับน้ำและดินต่างกัน" />
+              <HelpStep number="2" title="คลิกแปลงในฉาก" text="ปลูก ดูการเติบโต หมุนกล้อง และซูมดูพื้นที่ได้" />
+              <HelpStep number="3" title="จบวันและดูแล" text="ต้นไม้โต สะสม Carbon และเจอเหตุการณ์ชายฝั่ง" />
+              <HelpStep number="4" title="ตรวจ MRV" text="Estimated Carbon ต้องผ่าน Drone + Field ก่อนออกเครดิต" />
+              <HelpStep number="5" title="สร้าง Impact" text="รักษา Biodiversity, Community และ Coastal ควบคู่ Carbon" />
             </div>
-            <div className="tutorial-hero">{TUTORIAL[tutorialStep].icon}</div>
-            <p className="eyebrow">HOW TO PLAY · {tutorialStep + 1}/{TUTORIAL.length}</p>
-            <h2>{TUTORIAL[tutorialStep].title}</h2>
-            <p>{TUTORIAL[tutorialStep].text}</p>
-            <div className="tutorial-actions">
-              <button className="tutorial-skip" onClick={finishTutorial}>ข้าม</button>
-              {tutorialStep < TUTORIAL.length - 1 ? (
-                <button className="tutorial-next" onClick={() => setTutorialStep((step) => step + 1)}>ถัดไป →</button>
-              ) : (
-                <button className="tutorial-next" onClick={finishTutorial}>เริ่มเล่น</button>
-              )}
-            </div>
+            <button className="primary-game-button large" onClick={closeHelp}>เริ่มเล่น</button>
+            <p className="simulation-note">ค่าคาร์บอนและระบบนิเวศเป็นกลไกจำลองเพื่อการเล่น ไม่ใช่การคำนวณเครดิตจริง</p>
           </div>
-        </div>
+        </ModalBackdrop>
       )}
 
-      {showCompletion && (
-        <div className="completion-backdrop">
-          <div className="completion-modal">
-            <div className="completion-crown">🏆</div>
-            <p className="eyebrow">LIVING COAST RESTORED</p>
-            <h2>โครงการฟื้นฟูสำเร็จ</h2>
-            <p>ชายฝั่งมีทั้ง Carbon Value และ Non-carbon Benefit ผ่านเงื่อนไขหลักครบแล้ว</p>
-            <div className="grade-ring"><span>PROJECT GRADE</span><b>{projectGrade}</b></div>
-            <div className="completion-stats">
-              <span><b>{metrics.verified.toFixed(1)}</b>tCO₂e verified</span>
-              <span><b>{metrics.survivalRate}%</b>survival</span>
-              <span><b>{metrics.impactScore}</b>impact</span>
-              <span><b>Day {game.day}</b>completed</span>
-            </div>
-            <div className="completion-actions">
-              <button onClick={() => setShowCompletion(false)}>เล่นต่อแบบ Sandbox</button>
-              <button className="primary-finish" onClick={resetGame}>เริ่มโครงการใหม่</button>
+      {showUpgrades && (
+        <ModalBackdrop onClose={() => setShowUpgrades(false)}>
+          <div className="upgrade-modal game-modal">
+            <button className="modal-close" onClick={() => setShowUpgrades(false)}>×</button>
+            <small>PROJECT BUILDINGS</small>
+            <h2>อัปเกรดพื้นที่</h2>
+            <div className="upgrade-grid">
+              {Object.entries(UPGRADE_INFO).map(([key, info]) => {
+                const level = game.upgrades[key]
+                const cost = info.baseCost * (level + 1)
+                return (
+                  <article key={key} className="upgrade-card">
+                    <span className="upgrade-icon">{info.icon}</span>
+                    <div><b>{info.name}</b><small>{info.description}</small></div>
+                    <div className="level-dots">{[1, 2, 3].map((dot) => <i key={dot} className={dot <= level ? 'on' : ''} />)}</div>
+                    <button onClick={() => buyUpgrade(key)} disabled={level >= 3}>
+                      {level >= 3 ? 'MAX LEVEL' : `อัปเกรด ${cost} ●`}
+                    </button>
+                  </article>
+                )
+              })}
             </div>
           </div>
-        </div>
+        </ModalBackdrop>
+      )}
+
+      {showLog && (
+        <ModalBackdrop onClose={() => setShowLog(false)}>
+          <div className="log-modal game-modal">
+            <button className="modal-close" onClick={() => setShowLog(false)}>×</button>
+            <small>FIELD ACTIVITY</small>
+            <h2>บันทึกภาคสนาม</h2>
+            <div className="field-log-list">
+              {game.log.map((item, index) => (
+                <div key={`${item.day}-${index}`} className={`field-log-item type-${item.type}`}>
+                  <span>DAY {item.day}</span><p>{item.text}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {showGoals && (
+        <ModalBackdrop onClose={() => setShowGoals(false)}>
+          <div className="goals-modal game-modal">
+            <button className="modal-close" onClick={() => setShowGoals(false)}>×</button>
+            <small>LIVING COAST CAMPAIGN</small>
+            <h2>เส้นทางโครงการ</h2>
+            <div className="chapter-list">
+              {STORY_CHAPTERS.map((chapter, index) => {
+                const complete = game.claimedChapters.includes(index) || chapter.test(game, derived)
+                return (
+                  <div key={chapter.title} className={complete ? 'complete' : ''}>
+                    <span>{complete ? '✓' : index + 1}</span>
+                    <p><b>{chapter.title}</b><small>{chapter.text}</small></p>
+                    <em>+{chapter.reward} ●</em>
+                  </div>
+                )
+              })}
+            </div>
+            <h3>เงื่อนไข Living Coast Standard</h3>
+            <div className="victory-checks">
+              <GoalCheck label="ต้นไม้รอด 12 ต้น" value={`${derived.living.length}/12`} done={derived.victoryChecks.living} />
+              <GoalCheck label="ต้นโตเต็มที่ 8 ต้น" value={`${derived.matureCount}/8`} done={derived.victoryChecks.mature} />
+              <GoalCheck label="Verified 25 tCO₂e" value={`${game.stats.verified.toFixed(1)}/25`} done={derived.victoryChecks.carbon} />
+              <GoalCheck label="Biodiversity 45" value={Math.round(game.biodiversity)} done={derived.victoryChecks.biodiversity} />
+              <GoalCheck label="Community 35" value={Math.round(game.community)} done={derived.victoryChecks.community} />
+              <GoalCheck label="Coastal 35" value={Math.round(game.coastal)} done={derived.victoryChecks.coastal} />
+              <GoalCheck label="Survival 70%" value={`${derived.survivalRate}%`} done={derived.victoryChecks.survival} />
+            </div>
+          </div>
+        </ModalBackdrop>
+      )}
+
+      {derived.victory && !sandbox && (
+        <ModalBackdrop>
+          <div className="victory-modal game-modal">
+            <div className="victory-seal">A</div>
+            <small>CAMPAIGN COMPLETE</small>
+            <h2>Living Coast Standard</h2>
+            <p>พื้นที่ของคุณผ่านเป้าหมาย Carbon และ Non-carbon Benefit ครบทุกด้าน</p>
+            <div className="victory-stats">
+              <span><b>{game.stats.verified.toFixed(1)}</b><small>Verified tCO₂e</small></span>
+              <span><b>{derived.impact}</b><small>Impact Score</small></span>
+              <span><b>{derived.survivalRate}%</b><small>Survival</small></span>
+            </div>
+            <div className="victory-actions">
+              <button className="primary-game-button large" onClick={() => setSandbox(true)}>เล่น Sandbox ต่อ</button>
+              <button className="secondary-game-button" onClick={resetGame}>เริ่มโครงการใหม่</button>
+            </div>
+          </div>
+        </ModalBackdrop>
       )}
     </div>
   )
 }
 
-function Metric({ icon, label, value }) {
+function ResourcePill({ icon, label, value, tone }) {
+  return (
+    <div className={`resource-pill tone-${tone}`}>
+      <span>{icon}</span><b>{value}</b><small>{label}</small>
+    </div>
+  )
+}
+
+function ImpactMeter({ label, value, icon }) {
   const safe = clamp(value)
   return (
-    <div className="metric">
+    <div className="impact-meter">
       <div><span>{icon}</span><b>{label}</b><strong>{Math.round(value)}</strong></div>
-      <div className="metric-track"><span style={{ width: `${safe}%` }} /></div>
+      <div className="meter-track"><span style={{ width: `${safe}%` }} /></div>
     </div>
+  )
+}
+
+function ModalBackdrop({ children, onClose }) {
+  return (
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose?.()
+      }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function HelpStep({ number, title, text }) {
+  return (
+    <div className="help-step"><span>{number}</span><p><b>{title}</b><small>{text}</small></p></div>
+  )
+}
+
+function GoalCheck({ label, value, done }) {
+  return (
+    <div className={done ? 'done' : ''}><span>{done ? '✓' : '○'}</span><b>{label}</b><strong>{value}</strong></div>
   )
 }
 
