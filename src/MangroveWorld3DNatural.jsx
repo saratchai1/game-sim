@@ -1297,7 +1297,18 @@ function WorldDiagnostics() {
     if (!new URLSearchParams(location.search).has('qa')) return
     window.__coastDiagnostics = () => {
       const actors = []
-      scene.traverse((o) => { if (/^(crew-|coast-boat|coast-crab-|coast-fish-)/.test(o.name)) actors.push({ name: o.name, position: o.position.toArray() }) })
+      scene.traverse((o) => {
+        if (!/^(crew-|coast-boat|coast-crab-|coast-fish-)/.test(o.name)) return
+        const actor = { name:o.name, position:o.position.toArray(), state:o.userData.workerState, task:o.userData.workerTask }
+        if (o.name.startsWith('crew-')) {
+          const head = o.getObjectByName('head')
+          const projected = (head || o).getWorldPosition(new THREE.Vector3()).project(camera)
+          const ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2(projected.x,projected.y),camera)
+          actor.pickHits = ray.intersectObject(o,true).length
+          actor.parts = []; o.traverse((part) => { if (part.isMesh && part.name) actor.parts.push(part.name) })
+        }
+        actors.push(actor)
+      })
       return { calls: gl.info.render.calls, triangles: gl.info.render.triangles, actors,
         plots: PLOT_POSITIONS.map(([x,z],i) => { const p = new THREE.Vector3(x,.65,z).project(camera); return { id: i+1, x: (p.x+1)/2*gl.domElement.clientWidth, y: (1-p.y)/2*gl.domElement.clientHeight } }) }
     }

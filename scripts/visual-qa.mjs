@@ -43,6 +43,12 @@ async function layout(page) {
       elements:['.top-hud','.left-stack','.plant-dock','.utility-rail','.notice-toast'].map(inspect) }
   })
 }
+async function workerState(page,index,wanted) {
+  await page.waitForFunction(({index,wanted}) => window.__coastDiagnostics().actors.some(a => a.name === `crew-${index}` && a.state === wanted),{index,wanted},{timeout:45000})
+  await page.waitForTimeout(700) // Let the joint blend settle before the pose screenshot.
+  await shot(page,`worker-${wanted}`)
+  check(`successful action reaches the ${wanted} pose in the live scene`)
+}
 async function endDay(page) {
   await page.getByRole('button',{name:'จบวันนี้',exact:true}).click()
   await page.getByRole('button',{name:/ยืนยันจบวัน/}).click()
@@ -66,6 +72,11 @@ try {
     assert.notDeepEqual(after.actors.find(a=>a.name===actor.name).position,actor.position,`${actor.name} must move`)
   }
   report.render = { calls:after.calls, triangles:after.triangles, actorCount:after.actors.length }
+  for(const actor of after.actors.filter(a=>a.name.startsWith('crew-'))) {
+    assert.equal(actor.pickHits,0,'worker must not intercept plot rays')
+    for(const part of ['head','neck','torso','shoulder','upper-arm','forearm','hand','hips','thigh','knee','shin','boot-toe'])assert.ok(actor.parts.includes(part),`${actor.name} missing ${part}`)
+  }
+  check('articulated body parts exist and rays through workers have zero worker hits')
   check('three articulated characters and the boat move in the live scene')
   await page.getByRole('button',{name:'เปิดแผนภาคสนาม',exact:true}).click()
   await shot(page,'desktop-planning')
@@ -74,6 +85,7 @@ try {
   assert.equal((await state(page)).expedition.counters.clean,1)
   assert.equal(await page.locator('[data-crew="clean"]').isDisabled(),true)
   await page.getByRole('button',{name:'ปิดแผนภาคสนาม',exact:true}).click()
+  await workerState(page,1,'cleanup')
   check('accepting a contract and doing fieldwork persists and blocks double rewards')
 
   // Real canvas raycasting selects an empty plot without spending coins.
@@ -85,6 +97,7 @@ try {
   await shot(page,'desktop-plot-preview')
   await page.locator('.confirm-plant').click()
   assert.equal((await state(page)).plots[4].species,'rhizophora')
+  await workerState(page,0,'plant')
   // Plant the rest through the keyboard-accessible map.
   await page.locator('.species-tool').nth(2).click()
   await selectPlot(page,1); await page.locator('.confirm-plant').click()
@@ -94,6 +107,10 @@ try {
   await page.locator('.restoration-card .field-plan-button').click()
   assert.equal((await state(page)).expedition.completed,1)
   check('canvas preview, three species, mission reward and restoration delivery work together')
+  await page.getByRole('button',{name:'เปิดแผนภาคสนาม',exact:true}).click()
+  await page.locator('[data-crew="care"]').click()
+  await page.getByRole('button',{name:'ปิดแผนภาคสนาม',exact:true}).click()
+  await workerState(page,0,'maintain')
   // Selection details must remain usable at tablet width.
   await selectPlot(page,4)
   const funds=(await state(page)).coins
@@ -111,12 +128,14 @@ try {
   assert.equal(await page.locator('[data-crew="survey"]').isEnabled(),true)
   await page.locator('[data-crew="survey"]').click()
   await page.getByRole('button',{name:'ปิดแผนภาคสนาม',exact:true}).click()
+  await workerState(page,2,'inspect')
   check('growth, forecast storm resolution and habitat-driven survey unlock succeed')
   await page.getByRole('button',{name:'เปิดเศรษฐกิจ',exact:true}).click()
   await page.locator('.carbon-panel .primary-game-button').click()
   const verified=await state(page)
   assert.equal(verified.estimatedCarbon,0)
   assert.ok(verified.credits>0)
+  await workerState(page,2,'mrv')
   await page.locator('.market-actions button').last().click()
   assert.ok((await state(page)).coins>verified.coins)
   await page.getByRole('button',{name:'ปิดเศรษฐกิจ',exact:true}).click()

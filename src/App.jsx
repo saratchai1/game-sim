@@ -218,6 +218,7 @@ function App() {
           ? { ...plot, health: clamp(plot.health + 20) }
           : plot),
       }
+      setWorldAction({ type: 'care', plotId: selected.id, id: `care-${current.day}-${selected.id}-${target.health}` })
       setNotice(`บำรุงแปลง ${selected.id} แล้ว · สุขภาพ +20`)
       return appendLog(next, `ทีมภาคสนามบำรุงแปลง ${selected.id}`, 'care')
     })
@@ -238,6 +239,7 @@ function App() {
           ? { ...plot, species: null, age: 0, health: 100, dead: false }
           : plot),
       }
+      setWorldAction({ type: 'clear', plotId: selected.id, id: `clear-${current.day}-${selected.id}-${current.coins}` })
       setNotice(`เคลียร์แปลง ${selected.id} แล้ว · เลือกพันธุ์เพื่อปลูกใหม่`)
       return appendLog(next, `เตรียมแปลง ${selected.id} สำหรับปลูกซ่อม`, 'care')
     })
@@ -286,6 +288,7 @@ function App() {
         stats: { ...current.stats, verified: current.stats.verified + issued },
       }
       next = appendLog(next, `MRV ผ่าน ออกเครดิต ${issued.toFixed(1)} tCO₂e`, 'carbon')
+      setWorldAction({ type: 'mrv', plotId: current.plots.find((p) => p.species && !p.dead)?.id || null, id: `mrv-${current.day}-${current.stats.verified}` })
       setNotice(`Verified ${issued.toFixed(1)} tCO₂e · พร้อมถือหรือขายเครดิต`)
       return next
     })
@@ -448,6 +451,7 @@ function App() {
     setSelectedPlot(null)
     setSandbox(false)
     setDayReport(null)
+    setWorldAction(null)
     setCameraReset((v) => v + 1)
     setNotice('เริ่มโครงการใหม่แล้ว · เลือกพันธุ์และคลิกพื้นที่ 3D')
   }
