@@ -1,3 +1,4 @@
+import { restoreExpedition } from './restoration.js'
 // Pure progression rules. All deadlines use game days, never real-world time.
 export const freshJourney = () => ({ xp: 0, combo: 0, bestCombo: 0, perfect: 0, mission: 0, fieldworkDay: 0, deliveryDay: 0, discovered: [], sandbox: false })
 export const RANKS = [
@@ -97,13 +98,14 @@ export function restoreGame(parsed, initial) {
     if (Number.isFinite(parsed[key]) && parsed[key] >= (key === 'day' ? 1 : 0)) next[key] = parsed[key]
   }
   next.day = Math.floor(next.day)
+  next.expedition = restoreExpedition(parsed.expedition, next.day)
   for (const key of ['biodiversity', 'community', 'coastal']) next[key] = Math.min(100, next[key])
   next.plots = initial.plots.map((base, index) => {
     const p = parsed.plots[index]
     if (!p || p.id !== base.id) return base
     const species = ['rhizophora', 'avicennia', 'sonneratia'].includes(p.species) ? p.species : null
     return { ...base, species, age: Number.isFinite(p.age) ? Math.max(0, p.age) : 0,
-      health: Number.isFinite(p.health) ? Math.max(0, Math.min(100, p.health)) : 100, dead: Boolean(species && (p.dead || p.health <= 5)) }
+      prepared: p.prepared === true && base.soil === 'ทราย', health: Number.isFinite(p.health) ? Math.max(0, Math.min(100, p.health)) : 100, dead: Boolean(species && (p.dead || p.health <= 5)) }
   })
   if (['rhizophora', 'avicennia', 'sonneratia'].includes(parsed.activeSpecies)) next.activeSpecies = parsed.activeSpecies
   for (const group of ['stats', 'upgrades']) {
