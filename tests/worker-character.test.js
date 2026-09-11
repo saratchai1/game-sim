@@ -32,5 +32,6 @@ test('worker primitives return no raycast intersections and variants are bounded
   assert.deepEqual(hits,[])
   assert.equal(new Set(workerVariants.map(v=>v.hat)).size,3)
   assert.equal(new Set(workerVariants.map(v=>v.skin)).size,3)
-  workerVariants.forEach(v=>{assert.ok(v.width>.8&&v.width<1.2);assert.ok(v.height>.8&&v.height<1.2)})
+  assert.equal(new Set(workerVariants.map(v=>v.hairStyle)).size,3)
+  workerVariants.forEach(v=>{assert.ok(v.accent&&v.gear);assert.ok(v.width>.8&&v.width<1.2);assert.ok(v.height>.8&&v.height<1.2)})
 })
