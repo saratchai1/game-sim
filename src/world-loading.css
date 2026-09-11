@@ -1,0 +1,7 @@
+.world-loading{display:grid;place-items:center;background:linear-gradient(170deg,#d9edda 0%,#a4d4c9 48%,#6aafba 100%);z-index:2;pointer-events:none}
+.world-loading-card{display:flex;flex-direction:column;align-items:center;gap:12px;margin:24px;padding:28px 30px;max-width:380px;text-align:center;border:1px solid #ffffff80;border-radius:24px;background:#fffbeded;box-shadow:0 12px 32px #30574817;color:#365846}
+.world-loading-card strong{font-size:21px}.world-loading-card>span:not(.world-loading-leaf):not(.world-loading-track){font-size:13px;line-height:1.7}.world-loading-leaf{font-size:40px}
+.world-loading-track{width:170px;height:5px;border-radius:8px;overflow:hidden;background:#d5e4d5}.world-loading-track i{display:block;width:45%;height:100%;border-radius:8px;background:#669d69;animation:world-loading-drift 1.5s ease-in-out infinite alternate}
+.world-loading-card button{pointer-events:auto;border:0;border-radius:12px;padding:10px 18px;background:#436f56;color:#fff;font:inherit;cursor:pointer}
+@keyframes world-loading-drift{from{transform:translateX(-70%)}to{transform:translateX(190%)}}
+@media(prefers-reduced-motion:reduce){.world-loading-track i{animation:none;transform:translateX(60%)}}

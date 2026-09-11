@@ -1,8 +1,8 @@
 name: World performance
 
 on:
-  push:
-    branches: [perf/world-polish]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,32 +11,58 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Test
-        run: npm test | tee /tmp/tests.txt
-      - name: Build
-        run: npm run build | tee /tmp/build.txt
-      - name: Install browser QA tools (not app dependencies)
+      - name: Tests and normal production bundle (no diagnostics)
+        run: |
+          mkdir -p performance-artifacts
+          npm test | tee performance-artifacts/tests.txt
+          npm run build | tee performance-artifacts/build-after.txt
+          node scripts/bundle-report.mjs dist > performance-artifacts/bundle-after.json
+      - name: Locked main baseline - read-only detached worktree
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/game-sim-baseline" 1d8ac18b38d3ea2c1e472ae5104e6eb03c1fbd2b
+          ln -s "$GITHUB_WORKSPACE/node_modules" "$RUNNER_TEMP/game-sim-baseline/node_modules"
+          (cd "$RUNNER_TEMP/game-sim-baseline" && npm run build -- --manifest) | tee performance-artifacts/build-before.txt
+          node scripts/bundle-report.mjs "$RUNNER_TEMP/game-sim-baseline/dist" > performance-artifacts/bundle-before.json
+      - name: Enable matching on-demand counters in QA builds only
+        run: |
+          node scripts/instrument-baseline.mjs "$RUNNER_TEMP/game-sim-baseline"
+          (cd "$RUNNER_TEMP/game-sim-baseline" && VITE_WORLD_QA=1 npm run build)
+          VITE_WORLD_QA=1 npm run build
+      - name: Browser QA tools - no app dependency changes
         run: |
           npm install --no-save --package-lock=false playwright@1.55.0
           npx playwright install --with-deps chromium
-      - name: Visual QA and console checks
+      - name: Baseline - production preview, four viewports, same runner
+        env:
+          PERF_LABEL: before
+          PERF_OUTPUT: performance-artifacts/before
+        run: PERF_ROOT="$RUNNER_TEMP/game-sim-baseline" node scripts/performance-qa.mjs
+      - name: Optimized - production preview, four viewports, same runner
+        env:
+          PERF_LABEL: after
+          PERF_OUTPUT: performance-artifacts/after
+        run: node scripts/performance-qa.mjs
+      - name: Compare measured calls, actor preservation and initial bytes
+        run: node scripts/compare-performance.mjs
+      - name: Full original gameplay and visual regression QA
         env:
           QA_LOCAL_SERVER: '1'
           QA_OUTPUT: performance-artifacts/visual-qa
         run: node scripts/visual-qa.mjs
-      - name: Capture verification
+      - name: Record exact source revision
         if: always()
         run: |
           mkdir -p performance-artifacts
-          cp /tmp/tests.txt /tmp/build.txt performance-artifacts/
           git rev-parse HEAD > performance-artifacts/commit.txt
       - uses: actions/upload-artifact@v4
         if: always()

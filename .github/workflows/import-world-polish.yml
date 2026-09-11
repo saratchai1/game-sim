@@ -1,0 +1,34 @@
+name: Import tested world polish source
+on:
+  push:
+    branches: [perf/world-polish]
+    paths: [.world-polish-import.py]
+permissions:
+  contents: write
+jobs:
+  import:
+    if: github.ref == 'refs/heads/perf/world-polish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply the hash-checked patch only on the performance branch
+        run: |
+          test "$GITHUB_REF" = refs/heads/perf/world-polish
+          git merge-base --is-ancestor 1d8ac18b38d3ea2c1e472ae5104e6eb03c1fbd2b HEAD
+          python3 .world-polish-import.py
+          npm ci
+          npm test
+          npm run build
+      - name: Commit source and remove the one-time importer
+        run: |
+          git rm .world-polish-import.py .github/workflows/import-world-polish.yml
+          git add src
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "perf: batch mangrove scenery, defer Three.js, and budget actor animation"
+          git push origin HEAD:refs/heads/perf/world-polish
