@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import MangroveWorld3D from './MangroveWorld3D.jsx'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import MangroveWorld3D from './LazyWorld.jsx'
 import { rankFor, WILDLIFE, missionFor, claimMission, rewardPlant, discoverWildlife, diversityBonus, reconcileDeaths, restoreGame } from './coast-progression.js'
 
 import { SPECIES, EVENTS, UPGRADE_INFO, STORY_CHAPTERS, createInitialGame, clamp, suitability, getPlantCost, getMrvCost } from './game-data.js'
@@ -54,7 +54,7 @@ function App() {
   const rank = rankFor(game.journey.xp)
   const mission = missionFor(game)
   const forestBonus = diversityBonus(game)
-  const habitat = habitatFor(game)
+  const habitat = useMemo(() => habitatFor(game), [game])
   const forecast = forecastFor(game.day)
   const forecastEvent = EVENTS.find((e) => e.id === forecast.eventId)
   const playChime = () => {
@@ -192,14 +192,18 @@ function App() {
     setSelectedPlot(plotId)
   }
 
-  const handlePlotClick = (plotId) => {
+  const handlePlotClick = useCallback((plotId) => {
     const plot = game.plots.find((item) => item.id === plotId)
     setSelectedPlot(plotId)
     if (game.event) return
     if (plot && !plot.species) setNotice(`แปลง ${plotId} · Fit ${suitability(plot, game.activeSpecies)}/2 · ดูรายละเอียดแล้วกดยืนยันปลูก`)
     else if (plot?.dead) setNotice(`แปลง ${plotId} ต้องเคลียร์พื้นที่ก่อนปลูกใหม่`)
     else if (plot) setNotice(`เลือกแปลง ${plotId} · ${SPECIES[plot.species].name}`)
-  }
+  }, [game.plots, game.event, game.activeSpecies])
+  const handleWorldPlotClick = useCallback((plotId) => {
+    if (!photoMode) handlePlotClick(plotId)
+  }, [photoMode, handlePlotClick])
+  const clearWorldSelection = useCallback(() => setSelectedPlot(null), [])
 
   const maintainSelected = () => {
     if (!selected?.species || selected.dead) return
@@ -474,8 +478,8 @@ function App() {
         plots={game.plots}
         selectedPlot={selectedPlot}
         activeSpecies={game.activeSpecies}
-        onPlotClick={photoMode ? () => {} : handlePlotClick}
-        onClearSelection={() => setSelectedPlot(null)}
+        onPlotClick={handleWorldPlotClick}
+        onClearSelection={clearWorldSelection}
         day={game.day}
         upgrades={game.upgrades}
       />

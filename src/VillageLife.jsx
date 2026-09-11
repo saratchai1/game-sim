@@ -1,8 +1,12 @@
 import { Html } from '@react-three/drei'
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import Part from './WorkerShape.jsx'
 import { villagePlan, villageReaction, villageResidents } from './village-life.js'
+import { useMotionBudget } from './useMotionBudget.js'
+
+const PROP_ACTIVITY = { water:'water', nursery:'water', carry:'carry', market:'carry', repair:'repair', sweep:'sweep', nets:'nets' }
+const propActivity = (activity) => PROP_ACTIVITY[activity] || ''
 
 const bubbleStyle={
   pointerEvents:'none',whiteSpace:'nowrap',fontSize:'11px',fontWeight:700,color:'#30483f',
@@ -19,17 +23,23 @@ function VillagerProp({ activity }) {
   return null
 }
 
-function Villager({ resident, index, action, storm }) {
+const Villager = memo(function Villager({ resident, index, action, storm }) {
   const root=useRef(), body=useRef(), leftArm=useRef(), rightArm=useRef(), leftLeg=useRef(), rightLeg=useRef()
   const clock=useRef(index*1.9), lastAction=useRef(null), reactionUntil=useRef(0), currentBubble=useRef('')
-  const [bubble,setBubble]=useState('')
-  const [activity,setActivity]=useState('rest')
+  const bubbleNode=useRef(), propNodes=useRef({}), currentActivity=useRef(''), lastProp=useRef('')
+  const nextPlanAt=useRef(index*.047), nextBubbleAt=useRef(index*.039)
+  const planRef=useRef(villagePlan(resident.id,clock.current,storm))
+  const motionDue=useMotionBudget(root,index+3)
+  const availableProps=useMemo(()=>[...new Set(resident.route.map(stop=>propActivity(stop.activity)).filter(Boolean))],[resident])
   const reaction=villageReaction(action,resident.id)
 
   const updateBubble=(next)=>{
     if(currentBubble.current===next) return
     currentBubble.current=next
-    setBubble(next)
+    if(bubbleNode.current) {
+      bubbleNode.current.textContent=next?`${resident.name} · ${next}`:''
+      bubbleNode.current.style.display=next?'block':'none'
+    }
   }
 
   useEffect(()=>{
@@ -39,11 +49,17 @@ function Villager({ resident, index, action, storm }) {
     updateBubble(reaction.speak?reaction.text:'')
   },[action?.id,reaction?.text,reaction?.speak])
 
+  useEffect(()=>{planRef.current=villagePlan(resident.id,clock.current,storm);nextPlanAt.current=0},[resident.id,storm])
+
   useFrame((state,delta)=>{
     if(!root.current) return
     const dt=Math.min(delta,.06);clock.current+=dt
     const t=clock.current
-    const plan=villagePlan(resident.id,t,storm)
+    if(t>=nextPlanAt.current){
+      planRef.current=villagePlan(resident.id,t,storm)
+      nextPlanAt.current=t+.25
+    }
+    const plan=planRef.current
     const dx=plan.point[0]-root.current.position.x,dz=plan.point[2]-root.current.position.z
     const distance=Math.hypot(dx,dz), walking=distance>.12
     if(walking){
@@ -56,12 +72,25 @@ function Villager({ resident, index, action, storm }) {
     }
     const activeReaction=reactionUntil.current>t
     const nextActivity=walking?'walk':activeReaction?(reaction?.mood||'cheer'):plan.activity
-    if(nextActivity!==activity) setActivity(nextActivity)
-    const routineSpeaker=Math.floor(state.clock.elapsedTime/3)%villageResidents.length===index
-    if(storm&&!walking) updateBubble(routineSpeaker?(plan.label||'พายุมา เก็บของก่อน!'):'')
-    else if(activeReaction) updateBubble(reaction?.speak?reaction.text:'')
-    else if(!walking&&plan.label&&routineSpeaker) updateBubble(plan.label)
-    else updateBubble('')
+    if(nextActivity!==currentActivity.current){
+      currentActivity.current=nextActivity
+      root.current.userData.villageActivity=nextActivity
+      const prop=propActivity(nextActivity)
+      if(prop!==lastProp.current){
+        lastProp.current=prop
+        for(const [key,node] of Object.entries(propNodes.current)) if(node) node.visible=key===prop
+      }
+      nextBubbleAt.current=0
+    }
+    if(t>=nextBubbleAt.current){
+      nextBubbleAt.current=t+.25
+      const routineSpeaker=Math.floor(state.clock.elapsedTime/3)%villageResidents.length===index
+      if(storm&&!walking) updateBubble(routineSpeaker?(plan.label||'พายุมา เก็บของก่อน!'):'')
+      else if(activeReaction) updateBubble(reaction?.speak?reaction.text:'')
+      else if(!walking&&plan.label&&routineSpeaker) updateBubble(plan.label)
+      else updateBubble('')
+    }
+    if(!motionDue(state.clock.elapsedTime,dt)) return
 
     const swing=Math.sin(t*6+index)*.52
     const gentle=Math.sin(t*2.1+index)*.12
@@ -96,7 +125,7 @@ function Villager({ resident, index, action, storm }) {
         return <group key={`arm-${side}`} ref={arm} position={[side*.25,1.03,0]}>
           <Part shape="tube" color={resident.shirt} position={[0,-.12,0]} scale={[.13,.25,.14]} />
           <Part shape="sphere" color={resident.skin} position={[0,-.29,0]} scale={[.11,.12,.1]} />
-          {side>0&&<VillagerProp activity={activity}/>} 
+          {side>0&&availableProps.map((activity)=><group key={activity} visible={false} ref={node=>{propNodes.current[activity]=node}}><VillagerProp activity={activity}/></group>)} 
         </group>
       })}
       {[-1,1].map(side=>{
@@ -108,9 +137,11 @@ function Villager({ resident, index, action, storm }) {
       })}
       <Part color={resident.accent} position={[-.19,.84,-.02]} scale={[.1,.16,.12]} />
     </group>
-    {bubble&&<Html center position={[0,2.02,0]} zIndexRange={[3,1]} style={{pointerEvents:'none'}}><div style={bubbleStyle}>{resident.name} · {bubble}</div></Html>}
+    <Html center position={[0,2.02,0]} zIndexRange={[3,1]} style={{pointerEvents:'none'}}><div
+      ref={node=>{bubbleNode.current=node;if(node){node.textContent=currentBubble.current?`${resident.name} · ${currentBubble.current}`:'';node.style.display=currentBubble.current?'block':'none'}}}
+      style={{...bubbleStyle,display:'none'}} /></Html>
   </group>
-}
+})
 
 export default function VillageLife({ action, storm=false }) {
   return <group name="village-life">{villageResidents.map((resident,index)=><Villager key={resident.id} resident={resident} index={index} action={action} storm={storm}/>)}</group>

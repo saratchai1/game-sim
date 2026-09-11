@@ -1,10 +1,10 @@
-import { useMemo, useRef } from 'react'
+import { memo, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 
 // A single low-resolution surface: analytic ripples, shore tint and sun glints.
 // No texture download, reflection pass, or postprocessing dependency.
-export default function LivingWater({ tide, storm, score, golden }) {
+export default memo(function LivingWater({ tide, storm, score, golden }) {
   const group = useRef()
   const material = useRef()
   const targets = useMemo(() => ({
@@ -26,10 +26,10 @@ export default function LivingWater({ tide, storm, score, golden }) {
     u.uShallow.value.lerp(targets.shallow, ease)
     u.uGlint.value.lerp(targets.glint, ease)
     u.uStorm.value = THREE.MathUtils.lerp(u.uStorm.value, storm ? 1 : 0, ease)
-    group.current.position.y = THREE.MathUtils.damp(group.current.position.y, -.58 + tide, 2, delta)
+    group.current.position.y = THREE.MathUtils.damp(group.current.position.y, -.58 + tide, 2, Math.min(delta, .1))
   })
   return <mesh ref={group} position={[0, -.58 + tide, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-    <planeGeometry args={[90, 80, 72, 64]} />
+    <planeGeometry args={[90, 80, 64, 48]} />
     <shaderMaterial ref={material} uniforms={uniforms} vertexShader={`
       uniform float uTime; uniform float uStorm; varying vec2 vWorld;
       void main() {
@@ -52,4 +52,4 @@ export default function LivingWater({ tide, storm, score, golden }) {
         #include <colorspace_fragment>
       }`} />
   </mesh>
-}
+})
