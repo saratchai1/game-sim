@@ -65,7 +65,7 @@ function Villager({ resident, index, action, storm }) {
     const swing=Math.sin(t*6+index)*.52
     const gentle=Math.sin(t*2.1+index)*.12
     body.current.position.y=Math.sin(t*3+index)*(walking?.018:.008)
-    body.current.rotation.x=nextActivity==='nursery'||nextActivity==='water'?.16:nextActivity==='shelter'?.12:0
+    body.current.rotation.x=(nextActivity==='nursery'||nextActivity==='water')?.16:nextActivity==='shelter'?.12:0
     leftLeg.current.rotation.x=walking?swing:0
     rightLeg.current.rotation.x=walking?-swing:0
     leftArm.current.rotation.x=walking?-swing*.72:gentle
