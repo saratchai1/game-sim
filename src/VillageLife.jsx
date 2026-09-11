@@ -36,8 +36,8 @@ function Villager({ resident, index, action, storm }) {
     if(!reaction || !action?.id || lastAction.current===action.id) return
     lastAction.current=action.id
     reactionUntil.current=clock.current+4.5
-    updateBubble(reaction.text)
-  },[action?.id,reaction?.text])
+    updateBubble(reaction.speak?reaction.text:'')
+  },[action?.id,reaction?.text,reaction?.speak])
 
   useFrame((state,delta)=>{
     if(!root.current) return
@@ -57,15 +57,16 @@ function Villager({ resident, index, action, storm }) {
     const activeReaction=reactionUntil.current>t
     const nextActivity=walking?'walk':activeReaction?(reaction?.mood||'cheer'):plan.activity
     if(nextActivity!==activity) setActivity(nextActivity)
-    if(storm&&!walking) updateBubble(plan.label||'พายุมา เก็บของก่อน!')
-    else if(activeReaction) updateBubble(reaction?.text||'')
-    else if(!walking&&plan.label) updateBubble(plan.label)
-    else if(walking||!plan.label) updateBubble('')
+    const routineSpeaker=Math.floor(state.clock.elapsedTime/3)%villageResidents.length===index
+    if(storm&&!walking) updateBubble(routineSpeaker?(plan.label||'พายุมา เก็บของก่อน!'):'')
+    else if(activeReaction) updateBubble(reaction?.speak?reaction.text:'')
+    else if(!walking&&plan.label&&routineSpeaker) updateBubble(plan.label)
+    else updateBubble('')
 
     const swing=Math.sin(t*6+index)*.52
     const gentle=Math.sin(t*2.1+index)*.12
     body.current.position.y=Math.sin(t*3+index)*(walking?.018:.008)
-    body.current.rotation.x=(nextActivity==='nursery'||nextActivity==='water')?.16:nextActivity==='shelter'?.12:0
+    body.current.rotation.x=(nextActivity==='nursery'||nextActivity==='water') ? .16 : nextActivity==='shelter' ? .12 : 0
     leftLeg.current.rotation.x=walking?swing:0
     rightLeg.current.rotation.x=walking?-swing:0
     leftArm.current.rotation.x=walking?-swing*.72:gentle
