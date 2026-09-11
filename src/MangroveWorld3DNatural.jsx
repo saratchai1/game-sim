@@ -8,6 +8,11 @@ import {
 } from '@react-three/drei'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import LivingWater from './LivingWater.jsx'
+import CoastCharacters from './CoastCharacters.jsx'
+import { forecastFor } from './restoration.js'
+import { suitability } from './game-data.js'
 
 const SPECIES_LOOK = {
   rhizophora: {
@@ -208,7 +213,7 @@ function DeadTree() {
   )
 }
 
-function MangroveTree({ plot, plotId }) {
+function MangroveTree({ plot, plotId, storm }) {
   const group = useRef()
   const look = SPECIES_LOOK[plot.species] || SPECIES_LOOK.rhizophora
   const stageScale = plot.age < 1 ? 0.35 : plot.age < 3 ? 0.58 : plot.age < 6 ? 0.82 : 1
@@ -218,9 +223,9 @@ function MangroveTree({ plot, plotId }) {
 
   useFrame((state, delta) => {
     if (!group.current || plot.dead) return
-    growthScale.current = THREE.MathUtils.damp(growthScale.current, stageScale, 5.8, delta)
+    growthScale.current = THREE.MathUtils.damp(growthScale.current, stageScale * (0.91 + pseudo(plotId * 4.7) * .2), 5.8, delta)
     group.current.scale.setScalar(growthScale.current)
-    group.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.85 + seed) * 0.018
+    group.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.85 + seed) * (storm ? 0.055 : 0.018)
     group.current.rotation.x = Math.cos(state.clock.elapsedTime * 0.66 + seed) * 0.011
   })
 
@@ -297,7 +302,7 @@ function MangroveTree({ plot, plotId }) {
 
       <group scale={healthScale}>
         {clusters.map(([position, scale, color], index) => (
-          <LeafCluster key={index} position={position} scale={scale} color={color} />
+          <LeafCluster key={index} position={position} scale={scale} color={plot.health < 45 ? '#99854b' : color} />
         ))}
       </group>
 
@@ -421,25 +426,28 @@ function SelectionMarker() {
 
 function GrassTuft({ position, scale = 1, color = '#70b74d', seed = 0 }) {
   const group = useRef()
-
+  // Five blades share one draw call instead of five meshes/materials per tuft.
+  const geometry = useMemo(() => {
+    const blades = Array.from({ length: 5 }, (_, i) => {
+      const blade = new THREE.ConeGeometry(.045, .34, 4)
+      blade.rotateZ((i - 2) * .08)
+      blade.translate((i - 2) * .055, .17, (pseudo(seed + i) - .5) * .12)
+      return blade
+    })
+    const merged = mergeGeometries(blades)
+    blades.forEach((blade) => blade.dispose())
+    return merged
+  }, [seed])
+  useEffect(() => () => geometry.dispose(), [geometry])
   useFrame((state) => {
-    if (!group.current) return
-    group.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.8 + seed) * 0.022
+    if (group.current) group.current.rotation.z = Math.sin(state.clock.elapsedTime * .8 + seed) * .022
   })
-
-  return (
-    <group ref={group} position={position} scale={scale}>
-      {Array.from({ length: 5 }, (_, index) => (
-        <mesh key={index} position={[(index - 2) * 0.055, 0.17, (pseudo(seed + index) - 0.5) * 0.12]} rotation={[0, 0, (index - 2) * 0.08]}>
-          <coneGeometry args={[0.045, 0.34, 4]} />
-          <meshStandardMaterial color={color} roughness={1} flatShading />
-        </mesh>
-      ))}
-    </group>
-  )
+  return <mesh ref={group} geometry={geometry} position={position} scale={scale}>
+    <meshStandardMaterial color={color} roughness={1} flatShading />
+  </mesh>
 }
 
-function Plot3D({ plot, selected, activeSpecies, onClick }) {
+function Plot3D({ plot, selected, activeSpecies, onClick, storm }) {
   const [hovered, setHovered] = useState(false)
   const position = plotPosition(plot.id)
   const rotation = (pseudo(plot.id * 8.4) - 0.5) * 0.28
@@ -456,7 +464,7 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
   }, [innerGeometry, outerGeometry])
 
   const occupied = Boolean(plot.species)
-  const fit = suitabilityLocal(plot, plot.species || activeSpecies)
+  const fit = suitability(plot, plot.species || activeSpecies)
   const borderColor = selected ? '#fff27b' : fit === 2 ? '#79bf4d' : fit === 1 ? '#e4b75f' : '#9a6a51'
   const soilColor = {
     เลน: '#74543b',
@@ -484,12 +492,12 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
         document.body.style.cursor = 'default'
       }}
     >
-      {(selected || hovered) && (
+      {(!occupied || selected || hovered) && (
         <mesh geometry={outerGeometry} rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.032, 0]}>
           <meshBasicMaterial
             color={borderColor}
             transparent
-            opacity={selected ? 0.78 : 0.38}
+            opacity={selected ? 0.78 : hovered ? 0.5 : 0.25}
             depthWrite={false}
           />
         </mesh>
@@ -537,7 +545,7 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
 
       {occupied ? (
         <>
-          <MangroveTree plot={plot} plotId={plot.id} />
+          <MangroveTree plot={plot} plotId={plot.id} storm={storm} />
           {plot.age === 0 && !plot.dead && <PlantingBurst seed={plot.id} />}
         </>
       ) : (
@@ -549,54 +557,6 @@ function Plot3D({ plot, selected, activeSpecies, onClick }) {
         <cylinderGeometry args={[Math.max(radiusX, radiusZ) + 0.55, Math.max(radiusX, radiusZ) + 0.55, 1.8, 14]} />
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
-    </group>
-  )
-}
-
-function suitabilityLocal(plot, speciesKey) {
-  const speciesRules = {
-    rhizophora: { tides: ['กลาง'], soils: ['เลน', 'ตะกอน'] },
-    avicennia: { tides: ['กลาง', 'สูง'], soils: ['ตะกอน', 'ดินเลน'] },
-    sonneratia: { tides: ['ต่ำ', 'กลาง'], soils: ['เลน', 'ตะกอน'] },
-  }
-  const rules = speciesRules[speciesKey]
-  if (!rules) return 0
-  return Number(rules.tides.includes(plot.tide)) + Number(rules.soils.includes(plot.soil))
-}
-
-function Water({ day }) {
-  const group = useRef()
-  const ripples = useMemo(() => (
-    Array.from({ length: 22 }, (_, index) => ({
-      x: -18 + pseudo(index + 1) * 36,
-      z: -15 + pseudo(index + 28) * 30,
-      scale: 0.35 + pseudo(index + 71) * 0.85,
-      speed: 0.45 + pseudo(index + 94) * 0.55,
-    }))
-  ), [])
-
-  const tideOffset = [-0.08, -0.01, 0.11, 0.01][(Math.max(1, day) - 1) % 4]
-
-  useFrame((state) => {
-    if (group.current) {
-      group.current.position.y = -0.58 + tideOffset + Math.sin(state.clock.elapsedTime * 0.55) * 0.022
-    }
-  })
-
-  return (
-    <group ref={group}>
-      <mesh receiveShadow rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[54, 46]} />
-        <meshStandardMaterial color="#4faeae" roughness={0.28} metalness={0.035} />
-      </mesh>
-      {ripples.map((ripple, index) => (
-        <Float key={index} speed={ripple.speed} rotationIntensity={0} floatIntensity={0.13}>
-          <mesh position={[ripple.x, 0.035, ripple.z]} rotation={[-Math.PI / 2, 0, 0]} scale={ripple.scale}>
-            <torusGeometry args={[0.48, 0.022, 6, 22]} />
-            <meshBasicMaterial color="#d9f7ff" transparent opacity={0.4} />
-          </mesh>
-        </Float>
-      ))}
     </group>
   )
 }
@@ -615,13 +575,13 @@ function WaterChannel({ points, radius = 0.44 }) {
 
   return (
     <group>
-      <mesh geometry={geometry} scale={[1.08, 0.22, 1.08]} position={[0, 0.29, 0]} receiveShadow>
+      <mesh geometry={geometry} scale={[1.08, 0.22, 1.08]} position={[0, 0.38, 0]} receiveShadow>
         <meshStandardMaterial color="#66503e" roughness={1} />
       </mesh>
-      <mesh geometry={geometry} scale={[1, 0.09, 1]} position={[0, 0.38, 0]} receiveShadow>
-        <meshStandardMaterial color="#3fb9d2" roughness={0.2} transparent opacity={0.94} />
+      <mesh geometry={geometry} scale={[1, 0.09, 1]} position={[0, 0.49, 0]} receiveShadow>
+        <meshStandardMaterial color="#469f96" roughness={0.2} transparent opacity={0.94} />
       </mesh>
-      <mesh geometry={geometry} scale={[0.93, 0.025, 0.93]} position={[0, 0.425, 0]}>
+      <mesh geometry={geometry} scale={[0.93, 0.025, 0.93]} position={[0, 0.538, 0]}>
         <meshBasicMaterial color="#b9f4fb" transparent opacity={0.24} depthWrite={false} />
       </mesh>
     </group>
@@ -865,7 +825,7 @@ function Drone({ level }) {
       drone.current.rotation.y = -t + Math.PI / 2
     }
     rotors.forEach((rotor) => {
-      if (rotor.current) rotor.current.rotation.y += 0.5
+      if (rotor.current) rotor.current.rotation.y = state.clock.elapsedTime * 30
     })
   })
 
@@ -910,49 +870,14 @@ function DroneStation({ level }) {
   )
 }
 
-function Worker({ position, shirt = '#f4d35e', seed = 0 }) {
-  const group = useRef()
-
-  useFrame((state) => {
-    if (!group.current) return
-    const walk = Math.sin(state.clock.elapsedTime * 0.38 + seed)
-    group.current.position.x = position[0] + walk * 0.18
-    group.current.position.z = position[2] + Math.cos(state.clock.elapsedTime * 0.3 + seed) * 0.08
-    group.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 1.7 + seed) * 0.025
-    group.current.rotation.y = seed * 0.6 + walk * 0.16
-  })
-
-  return (
-    <group ref={group} position={position} rotation={[0, seed * 0.6, 0]} scale={0.72}>
-      <mesh position={[0, 0.45, 0]} castShadow>
-        <capsuleGeometry args={[0.16, 0.45, 4, 8]} />
-        <meshStandardMaterial color={shirt} roughness={0.8} />
-      </mesh>
-      <mesh position={[0, 0.98, 0]} castShadow>
-        <sphereGeometry args={[0.18, 9, 7]} />
-        <meshStandardMaterial color="#d99a66" roughness={0.82} />
-      </mesh>
-      <mesh position={[0, 1.16, 0]} castShadow>
-        <cylinderGeometry args={[0.27, 0.23, 0.1, 10]} />
-        <meshStandardMaterial color="#ee9d36" roughness={0.8} />
-      </mesh>
-    </group>
-  )
-}
-
 function CommunityVillage({ level }) {
-  const workers = [
-    [-8.8, 1.2, 7.4], [-6.9, 1.2, 6.2], [-5.0, 0.62, 4.6], [-3.2, 0.62, 3.3],
-  ]
+
 
   return (
     <group>
       <Hut position={[5.9, 1.19, 10.1]} wall="#ffd38d" roof="#e85e4b" scale={0.92} />
       {level >= 1 && <Hut position={[8.0, 1.19, 11.0]} wall="#feeab0" roof="#5cb574" scale={0.72} />}
       {level >= 2 && <Hut position={[3.9, 1.19, 10.8]} wall="#f7d6b8" roof="#4f92d1" scale={0.7} />}
-      {workers.slice(0, Math.min(workers.length, 1 + level)).map((position, index) => (
-        <Worker key={index} position={position} shirt={['#f4d35e', '#62c4ed', '#ef7c68', '#9bd45b'][index]} seed={index} />
-      ))}
       {level >= 2 && <MarketStall />}
     </group>
   )
@@ -1009,12 +934,15 @@ function Boat() {
 
   useFrame((state) => {
     if (!boat.current) return
+    boat.current.position.x = 13.8 + Math.sin(state.clock.elapsedTime * .11) * 1.4
+    boat.current.position.z = -7 + Math.cos(state.clock.elapsedTime * .11) * 5
+    boat.current.rotation.y = Math.atan2(Math.cos(state.clock.elapsedTime * .11) * 1.4, -Math.sin(state.clock.elapsedTime * .11) * 5) - Math.PI / 2
     boat.current.position.y = -0.37 + Math.sin(state.clock.elapsedTime * 1.15) * 0.052
     boat.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.8) * 0.033
   })
 
   return (
-    <group ref={boat} position={[10.0, -0.37, 6.4]} rotation={[0, -0.58, 0]}>
+    <group name="coast-boat" ref={boat} position={[10.0, -0.37, 6.4]} rotation={[0, -0.58, 0]}>
       <mesh castShadow scale={[1.5, 0.45, 0.72]}>
         <sphereGeometry args={[0.72, 16, 8, 0, Math.PI * 2, 0, Math.PI * 0.62]} />
         <meshStandardMaterial color="#e9583f" roughness={0.72} side={THREE.DoubleSide} />
@@ -1055,19 +983,30 @@ function DecorativeMangroves() {
 
 function Crab({ position, seed = 0 }) {
   const group = useRef()
+  const claws = useRef()
 
   useFrame((state) => {
     if (!group.current) return
     group.current.rotation.y = Math.sin(state.clock.elapsedTime + seed) * 0.2
-    group.current.position.x = position[0] + Math.sin(state.clock.elapsedTime * 0.8 + seed) * 0.08
+    if (claws.current) claws.current.rotation.z = Math.sin(state.clock.elapsedTime * 3 + seed) * .22
+    const t = state.clock.elapsedTime * .4 + seed
+    group.current.position.x = position[0] + Math.sin(t) * .6
+    group.current.position.z = position[2] + Math.cos(t * .7) * .2
   })
 
   return (
-    <group ref={group} position={position} scale={0.56}>
+    <group name={`coast-crab-${seed}`} ref={group} position={position} scale={0.56}>
       <mesh scale={[1.3, 0.54, 1]} castShadow>
         <sphereGeometry args={[0.21, 8, 6]} />
         <meshStandardMaterial color="#ef5d46" roughness={0.78} flatShading />
       </mesh>
+      <group ref={claws} position={[0,.08,.16]}>
+        {[-1,1].map((side) => <group key={side} position={[side*.32,.04,.13]} rotation={[0,side*.4,side*.4]}>
+          <mesh scale={[side===1?1.4:1,.7,1]}><sphereGeometry args={[.1,6,5]} /><meshStandardMaterial color="#f18455" /></mesh>
+          {[-1,1].map((pincer) => <mesh key={pincer} position={[pincer*.065,0,.1]} rotation={[.5,pincer*.4,0]}><coneGeometry args={[.035,.16,5]} /><meshStandardMaterial color="#f29c63" /></mesh>)}
+        </group>)}
+      </group>
+      {[-.07,.07].map((x) => <group key={x} position={[x,.14,.15]}><mesh><cylinderGeometry args={[.015,.015,.17,5]} /><meshStandardMaterial color="#e8855e" /></mesh><mesh position={[0,.1,0]}><sphereGeometry args={[.027,6,4]} /><meshBasicMaterial color="#192f34" /></mesh></group>)}
       {[-1, 1].map((side) => Array.from({ length: 3 }, (_, index) => (
         <CylinderBetween
           key={`${side}-${index}`}
@@ -1083,20 +1022,25 @@ function Crab({ position, seed = 0 }) {
 
 function Fish({ position, color = '#ffd166', seed = 0 }) {
   const group = useRef()
+  const tail = useRef()
 
   useFrame((state) => {
     if (!group.current) return
-    group.current.position.x = position[0] + Math.sin(state.clock.elapsedTime * 0.55 + seed) * 0.42
-    group.current.position.y = position[1] + Math.sin(state.clock.elapsedTime * 1.3 + seed) * 0.06
+    if (tail.current) tail.current.rotation.y = Math.sin(state.clock.elapsedTime * 7 + seed) * .35
+    const t = state.clock.elapsedTime * .55 + seed
+    group.current.position.x = position[0] + Math.sin(t) * 1.2
+    group.current.position.z = position[2] + Math.cos(t) * .55
+    group.current.rotation.y = Math.atan2(Math.sin(t) * .55, Math.cos(t) * 1.2)
+    group.current.position.y = position[1] + Math.sin(t * 2) * .025
   })
 
   return (
-    <group ref={group} position={position} scale={0.48}>
+    <group name={`coast-fish-${seed}`} ref={group} position={position} scale={0.65}>
       <mesh scale={[1.5, 0.64, 0.64]}>
         <sphereGeometry args={[0.23, 8, 6]} />
         <meshStandardMaterial color={color} roughness={0.62} transparent opacity={0.86} />
       </mesh>
-      <mesh position={[-0.48, 0, 0]} rotation={[0, 0, -Math.PI / 2]}>
+      <mesh ref={tail} position={[-0.48, 0, 0]} rotation={[0, 0, -Math.PI / 2]}>
         <coneGeometry args={[0.19, 0.4, 3]} />
         <meshStandardMaterial color={color} transparent opacity={0.86} />
       </mesh>
@@ -1155,7 +1099,7 @@ function Wildlife({ plots, communityLevel }) {
       {Array.from({ length: fishCount }, (_, index) => (
         <Fish
           key={`fish-${index}`}
-          position={[-11 + (index * 3.7) % 22, -0.48, -12 + (index % 3) * 3.1]}
+          position={[-9 + (index * 3.7) % 19, -.29, -12.8 - (index % 2) * .5]}
           color={['#ffd166', '#ff8d70', '#88e0dd'][index % 3]}
           seed={index * 0.8}
         />
@@ -1225,6 +1169,7 @@ function CameraRig({ selectedPlot, cameraReset }) {
   const { camera, size } = useThree()
   const focusFrames = useRef(0)
   const focusTarget = useRef(new THREE.Vector3(0, 0.5, 0.6))
+  const cameraDelta = useRef(new THREE.Vector3())
 
   useEffect(() => {
     const responsiveZoom = size.width < 600
@@ -1250,7 +1195,7 @@ function CameraRig({ selectedPlot, cameraReset }) {
 
   useFrame((_, elapsed) => {
     if (!controls.current || focusFrames.current <= 0) return
-    const delta = focusTarget.current.clone().sub(controls.current.target).multiplyScalar(1 - Math.exp(-5 * elapsed))
+    const delta = cameraDelta.current.copy(focusTarget.current).sub(controls.current.target).multiplyScalar(1 - Math.exp(-5 * elapsed))
     controls.current.target.add(delta)
     camera.position.add(delta)
     focusFrames.current -= elapsed * 60
@@ -1261,6 +1206,7 @@ function CameraRig({ selectedPlot, cameraReset }) {
       ref={controls}
       makeDefault
       target={[0, 0.5, 0.6]}
+      onStart={() => { focusFrames.current = 0 }}
       enablePan
       screenSpacePanning
       enableDamping
@@ -1275,24 +1221,26 @@ function CameraRig({ selectedPlot, cameraReset }) {
   )
 }
 
-function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades, day, weather, fireflies, cameraReset }) {
+function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades, day, weather, fireflies, cameraReset, habitat, clean, protection, action }) {
   const storm = weather === 'storm' || weather === 'kingtide'
-  const golden = day % 6 >= 3
+  const forecast = forecastFor(day)
+  const golden = forecast.golden
   const skyColor = storm ? '#84a9b5' : golden ? '#b6c8ba' : '#94d2d4'
 
   return (
     <>
+      {import.meta.env.DEV && <WorldDiagnostics />}
       <color attach="background" args={[skyColor]} />
       <fog attach="fog" args={[skyColor, 34, 68]} />
-      <ambientLight intensity={storm ? 0.8 : 0.9} />
-      <hemisphereLight args={[golden ? '#ffe7bb' : '#e3fbfa', '#5f684c', 1.8]} />
+      <ambientLight intensity={storm ? 0.65 : 0.65} />
+      <hemisphereLight args={[golden ? '#ffe7bb' : '#e3fbfa', '#5f684c', 1.25]} />
       <directionalLight
         castShadow
         position={[14, 22, 9]}
         color={golden ? '#ffde9e' : '#fff6df'}
-        intensity={storm ? 1.4 : golden ? 2.9 : 2.7}
-        shadow-mapSize-width={1536}
-        shadow-mapSize-height={1536}
+        intensity={storm ? 1.15 : golden ? 2.6 : 2.4}
+        shadow-mapSize-width={1024}
+        shadow-mapSize-height={1024}
         shadow-camera-left={-20}
         shadow-camera-right={20}
         shadow-camera-top={20}
@@ -1300,7 +1248,8 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
         shadow-bias={-0.0004}
       />
 
-      <Water day={day} />
+      <LivingWater tide={forecast.tideOffset} storm={storm} score={habitat?.score || 0} golden={golden} />
+      <RestorationScenery clean={clean} stage={habitat?.stage || 0} protection={protection} />
       {storm && <Rain />}
       <CoastalTerrain />
       <MudflatDetails />
@@ -1308,6 +1257,7 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
       <Nursery level={upgrades.nursery} />
       <DroneStation level={upgrades.mrv} />
       <CommunityVillage level={upgrades.community} />
+      <CoastCharacters action={action} target={action?.plotId ? plotPosition(action.plotId).map((v,i) => i === 0 ? v + .8 : v) : action?.type === "clean" ? [0,.48,-8.3] : action?.type === "patrol" ? [1,.48,-9.4] : null} storm={storm} />
       <Dock />
       <Boat />
 
@@ -1315,6 +1265,7 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
         <Plot3D
           key={plot.id}
           plot={plot}
+          storm={storm}
           selected={selectedPlot === plot.id}
           activeSpecies={activeSpecies}
           onClick={onPlotClick}
@@ -1337,6 +1288,50 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
 <CameraRig selectedPlot={selectedPlot} cameraReset={cameraReset} />
     </>
   )
+}
+
+// Read-only local diagnostics for browser QA. Removed from the production tree.
+function WorldDiagnostics() {
+  const { gl, scene, camera } = useThree()
+  useEffect(() => {
+    if (!new URLSearchParams(location.search).has('qa')) return
+    window.__coastDiagnostics = () => {
+      const actors = []
+      scene.traverse((o) => {
+        if (!/^(crew-|coast-boat|coast-crab-|coast-fish-)/.test(o.name)) return
+        const actor = { name:o.name, position:o.position.toArray(), state:o.userData.workerState, task:o.userData.workerTask }
+        if (o.name.startsWith('crew-')) {
+          const head = o.getObjectByName('head')
+          const projected = (head || o).getWorldPosition(new THREE.Vector3()).project(camera)
+          const ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2(projected.x,projected.y),camera)
+          actor.pickHits = ray.intersectObject(o,true).length
+          actor.parts = []; o.traverse((part) => { if (part.isMesh && part.name) actor.parts.push(part.name) })
+        }
+        actors.push(actor)
+      })
+      return { calls: gl.info.render.calls, triangles: gl.info.render.triangles, actors,
+        plots: PLOT_POSITIONS.map(([x,z],i) => { const p = new THREE.Vector3(x,.65,z).project(camera); return { id: i+1, x: (p.x+1)/2*gl.domElement.clientWidth, y: (1-p.y)/2*gl.domElement.clientHeight } }) }
+    }
+    return () => { delete window.__coastDiagnostics }
+  }, [gl,scene,camera])
+  return null
+}
+
+function RestorationScenery({ clean, stage, protection }) {
+  const litter = useRef()
+  const target = clean ? .001 : 1
+  useFrame((_, dt) => {
+    if (!litter.current) return
+    const size = THREE.MathUtils.damp(litter.current.scale.x, target, 5, dt)
+    litter.current.scale.setScalar(size)
+    litter.current.visible = size > .01
+  })
+  return <group>
+    <group ref={litter}>{Array.from({ length: Math.max(3, 9 - stage * 2) }, (_, i) => <group key={i} position={[-10.5 + i * 2.3, .52, -8.2 + Math.sin(i * 3) * .7]} rotation={[.1, i, 1.1]}><mesh><cylinderGeometry args={[.06, .06, .3, 6]} /><meshStandardMaterial color={i % 2 ? '#ced0c1' : '#72adbe'} /></mesh><mesh position={[0, .15, 0]}><boxGeometry args={[.07,.08,.07]} /><meshStandardMaterial color="#e98863" /></mesh></group>)}</group>
+    {Array.from({ length: stage * 8 }, (_, i) => <GrassTuft key={i} position={[-10.8 + pseudo(i * 5.2 + 2) * 20, .44, -8 + pseudo(i * 7.1 + 12) * 13]} scale={.35 + pseudo(i * 9.3) * .5} color={i % 2 ? '#7aaf67' : '#428c65'} seed={i + 1200} />)}
+    {protection && [-7,-3,1,5].map((x) => <group key={x} position={[x,.45,-9.5]}><mesh position={[0,.3,0]}><cylinderGeometry args={[.035,.05,1.1,6]} /><meshStandardMaterial color="#887252" /></mesh><mesh position={[.15,.68,0]}><planeGeometry args={[.3,.23]} /><meshStandardMaterial color="#eec866" side={THREE.DoubleSide} /></mesh></group>)}
+    {stage >= 2 && <group position={[8.3,.5,3.5]}><mesh position={[0,.55,0]}><cylinderGeometry args={[.045,.06,1.1,6]} /><meshStandardMaterial color="#9e8357" /></mesh><mesh position={[0,1.1,0]}><boxGeometry args={[.8,.45,.09]} /><meshStandardMaterial color="#276c58" /></mesh><mesh position={[0,1.12,.06]}><circleGeometry args={[.11,8]} /><meshBasicMaterial color="#edd599" /></mesh></group>}
+  </group>
 }
 
 function Rain() {
@@ -1377,7 +1372,7 @@ export default function MangroveWorld3DNatural(props) {
       <Canvas
         orthographic
         shadows
-        dpr={[1, 1.55]}
+        dpr={[1, 1.4]}
         camera={{ position: [20, 18, 22], zoom: 36, near: 0.1, far: 140 }}
         gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
         fallback={<WebGLFallback />}
