@@ -5,12 +5,16 @@ import Part from './WorkerShape.jsx'
 import WorkerProp from './WorkerProp.jsx'
 import { workerPose, smoothPose } from './WorkerAnimationPose.js'
 import { workerTask } from './workerVariants.js'
+import { useMotionBudget } from './useMotionBudget.js'
+const JOINT_KEYS = ['leftArm','rightArm','leftElbow','rightElbow','leftHip','rightHip','leftKnee','rightKnee']
 
 const labels={plant:'ปลูกต้นกล้า',cleanup:'เก็บและเตรียมพื้นที่',inspect:'สำรวจถิ่นอาศัย',maintain:'ดูแลต้นไม้',mrv:'ตรวจ MRV'}
 export default function WorkerCharacter({ variant:v, index, action, target }) {
   const label=useRef()
   const root=useRef(), body=useRef(), head=useRef(), joints=useRef({}), props=useRef({})
   const clock=useRef(index*4), assignment=useRef(null), lastAction=useRef(null), pose=useRef(workerPose('idle',0))
+  const poseTarget = useRef({}), lastProp = useRef(null), labelVisible = useRef(false)
+  const motionDue = useMotionBudget(root, index)
   const task=workerTask(action)
   const accent=v.accent||'#e8dfc3', gear=v.gear||'#56645d'
   const relevant=task?.worker===index
@@ -19,7 +23,7 @@ export default function WorkerCharacter({ variant:v, index, action, target }) {
     lastAction.current=action.id
     assignment.current={state:task.state,target:target||v.end,expires:clock.current+45,arrived:null, facePlot:Boolean(task.plotId)}
   },[action,relevant,target,v.end,task?.state])
-  useFrame((_,delta)=>{
+  useFrame((frame,delta)=>{
     if(!root.current) return
     const dt=Math.min(delta,.06);clock.current+=dt
     const t=clock.current
@@ -39,16 +43,21 @@ export default function WorkerCharacter({ variant:v, index, action, target }) {
       root.current.rotation.y+=Math.atan2(Math.sin(angle),Math.cos(angle))*Math.min(1,dt*7)
     }
     const state=walking?'walk':job?job.state:'idle'
-    if(label.current) label.current.style.display=job?'block':'none'
+    if(label.current && labelVisible.current !== Boolean(job)) { labelVisible.current=Boolean(job); label.current.style.display=job?'block':'none' }
     root.current.userData.workerState=state
     root.current.userData.workerTask=job?.state||null
-    const p=smoothPose(pose.current,workerPose(state,t),dt)
+    if(lastProp.current !== (job?.state || null)) {
+      lastProp.current = job?.state || null
+      for(const [key,node] of Object.entries(props.current)) if(node) node.visible=key.startsWith(job?.state+'-')
+    }
+    const poseDelta = motionDue(frame.clock.elapsedTime, dt)
+    if (!poseDelta) return
+    const p=smoothPose(pose.current,workerPose(state,t,poseTarget.current),poseDelta)
     body.current.rotation.x=p.body;body.current.position.y=p.bob
     head.current.rotation.x=p.head
     head.current.rotation.y=state==='idle'?Math.sin(t*.7)*.16:0
-    for(const key of ['leftArm','rightArm','leftElbow','rightElbow','leftHip','rightHip','leftKnee','rightKnee'])joints.current[key].rotation.x=p[key]
+    for(const key of JOINT_KEYS)joints.current[key].rotation.x=p[key]
     joints.current.rightHand.rotation.z=p.wrist
-    for(const [key,node]of Object.entries(props.current))if(node)node.visible=key.startsWith(job?.state+'-')
   })
   const ref=(key)=>(node)=>{joints.current[key]=node}
   return <group name={`crew-${index}`} ref={root} position={v.home} scale={[1.27*v.width,1.27*v.height,1.27]}>

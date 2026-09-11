@@ -6,9 +6,11 @@ import {
   RoundedBox,
   Sparkles,
 } from '@react-three/drei'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { SceneryBatch, GrassPatch } from './SceneryBatch.jsx'
+import { WorldResources, useWorldResources } from './WorldResources.jsx'
+import { WorldPerformance, useDeviceQuality } from './WorldPerformance.jsx'
 import LivingWater from './LivingWater.jsx'
 import CoastCharacters from './CoastCharacters.jsx'
 import { forecastFor } from './restoration.js'
@@ -124,36 +126,52 @@ function ExtrudedGround({ points, color, topY = 0, depth = 0.5, roughness = 0.94
 }
 
 function CylinderBetween({ start, end, radius = 0.06, color = '#815130' }) {
+  const resources = useWorldResources()
+  const [sx, sy, sz] = start, [ex, ey, ez] = end
   const transform = useMemo(() => {
-    const a = new THREE.Vector3(...start)
-    const b = new THREE.Vector3(...end)
+    const a = new THREE.Vector3(sx, sy, sz), b = new THREE.Vector3(ex, ey, ez)
     const direction = b.clone().sub(a)
     const length = direction.length()
-    const midpoint = a.clone().add(b).multiplyScalar(0.5)
-    const quaternion = new THREE.Quaternion().setFromUnitVectors(
-      new THREE.Vector3(0, 1, 0),
-      direction.clone().normalize(),
-    )
+    const midpoint = a.clone().add(b).multiplyScalar(.5)
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize())
     return { length, midpoint, quaternion }
-  }, [end, start])
-
-  return (
-    <mesh castShadow position={transform.midpoint} quaternion={transform.quaternion}>
-      <cylinderGeometry args={[radius, radius * 1.12, transform.length, 7]} />
-      <meshStandardMaterial color={color} roughness={0.92} flatShading />
-    </mesh>
-  )
+  }, [sx, sy, sz, ex, ey, ez])
+  return <mesh geometry={resources.geometry('cylinder', [1, 1.12, 1, 7])}
+    material={resources.material({ color, roughness: .92, flatShading: true })}
+    position={transform.midpoint} quaternion={transform.quaternion}
+    scale={[radius, transform.length, radius]} castShadow={radius >= .06} dispose={null} />
 }
 
-function LeafCluster({ position, scale, color }) {
-  return (
-    <mesh castShadow position={position} scale={scale}>
-      <dodecahedronGeometry args={[0.48, 1]} />
-      <meshStandardMaterial color={color} roughness={0.76} flatShading />
-    </mesh>
-  )
+function TreeCanopy({ clusters, unhealthy }) {
+  const items = useMemo(() => clusters.map(([position, scale, color]) => ({
+    position, scale, color: unhealthy ? '#99854b' : color,
+  })), [clusters, unhealthy])
+  return <SceneryBatch name="tree-canopy" shape="leaf" args={[.48, 1]} items={items}
+    roughness={.76} flatShading castShadow receiveShadow={false} />
 }
 
+function branchInstance(start, end, radius, color) {
+  const a = new THREE.Vector3(...start), b = new THREE.Vector3(...end)
+  const direction = b.clone().sub(a), length = direction.length()
+  return { color, matrix: new THREE.Matrix4().compose(a.add(b).multiplyScalar(.5),
+    new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize()),
+    new THREE.Vector3(radius, length, radius)) }
+}
+
+function TreeRoots({ species, seed, color }) {
+  const items = useMemo(() => Array.from({ length: 8 }, (_, index) => {
+    const angle = Math.PI * 2 * index / 8 + (species === 'rhizophora' ? pseudo(seed + index) * .18 : 0)
+    if (species === 'rhizophora') return branchInstance(
+      [Math.cos(angle) * .72, .02, Math.sin(angle) * .72],
+      [Math.cos(angle) * .08, .62 + (index % 2) * .12, Math.sin(angle) * .08], .045, color)
+    return { position: [Math.cos(angle) * .58, .07, Math.sin(angle) * .48],
+      scale: [1, .15 + (index % 3) * .025, 1], color: '#9b795b' }
+  }), [species, seed, color])
+  return <SceneryBatch name="tree-roots" items={items}
+    shape={species === 'rhizophora' ? 'cylinder' : 'cone'}
+    args={species === 'rhizophora' ? [1, 1.12, 1, 7] : [.032, 1, 5]}
+    roughness={species === 'rhizophora' ? .92 : 1} flatShading receiveShadow={false} />
+}
 
 function BlueCarbonOrb({ seed = 0 }) {
   const group = useRef()
@@ -220,10 +238,11 @@ function MangroveTree({ plot, plotId, storm }) {
   const growthScale = useRef(plot.age === 0 ? 0.12 : stageScale)
   const healthScale = 0.8 + (Math.max(plot.health, 10) / 100) * 0.2
   const seed = plotId * 17
+  const targetScale = stageScale * (0.91 + pseudo(plotId * 4.7) * .2)
 
   useFrame((state, delta) => {
     if (!group.current || plot.dead) return
-    growthScale.current = THREE.MathUtils.damp(growthScale.current, stageScale * (0.91 + pseudo(plotId * 4.7) * .2), 5.8, delta)
+    growthScale.current = THREE.MathUtils.damp(growthScale.current, targetScale, 5.8, delta)
     group.current.scale.setScalar(growthScale.current)
     group.current.rotation.z = Math.sin(state.clock.elapsedTime * 0.85 + seed) * (storm ? 0.055 : 0.018)
     group.current.rotation.x = Math.cos(state.clock.elapsedTime * 0.66 + seed) * 0.011
@@ -269,41 +288,11 @@ function MangroveTree({ plot, plotId, storm }) {
         <meshStandardMaterial color={look.trunk} roughness={0.9} flatShading />
       </mesh>
 
-      {plot.species === 'rhizophora' && (
-        <group>
-          {Array.from({ length: 8 }, (_, index) => {
-            const angle = (Math.PI * 2 * index) / 8 + pseudo(seed + index) * 0.18
-            return (
-              <CylinderBetween
-                key={index}
-                start={[Math.cos(angle) * 0.72, 0.02, Math.sin(angle) * 0.72]}
-                end={[Math.cos(angle) * 0.08, 0.62 + (index % 2) * 0.12, Math.sin(angle) * 0.08]}
-                radius={0.045}
-                color={look.trunk}
-              />
-            )
-          })}
-        </group>
-      )}
-
-      {plot.species === 'avicennia' && (
-        <group>
-          {Array.from({ length: 8 }, (_, index) => {
-            const angle = (Math.PI * 2 * index) / 8
-            return (
-              <mesh key={index} position={[Math.cos(angle) * 0.58, 0.07, Math.sin(angle) * 0.48]}>
-                <coneGeometry args={[0.032, 0.15 + (index % 3) * 0.025, 5]} />
-                <meshStandardMaterial color="#9b795b" roughness={1} flatShading />
-              </mesh>
-            )
-          })}
-        </group>
-      )}
+      {(plot.species === 'rhizophora' || plot.species === 'avicennia') &&
+        <TreeRoots species={plot.species} seed={seed} color={look.trunk} />}
 
       <group scale={healthScale}>
-        {clusters.map(([position, scale, color], index) => (
-          <LeafCluster key={index} position={position} scale={scale} color={plot.health < 45 ? '#99854b' : color} />
-        ))}
+        <TreeCanopy clusters={clusters} unhealthy={plot.health < 45} />
       </group>
 
       {plot.age >= 5 && plot.species === 'sonneratia' && (
@@ -346,7 +335,7 @@ function EmptyPlotMarker({ activeSpecies, hovered }) {
           opacity={hovered ? 1 : 0.74}
         />
       </mesh>
-      <mesh position={[0, 0.28, 0]} castShadow>
+      <mesh position={[0, 0.28, 0]}>
         <cylinderGeometry args={[0.03, 0.05, 0.48, 6]} />
         <meshStandardMaterial color={look.trunk} roughness={1} />
       </mesh>
@@ -379,7 +368,7 @@ function PlantingBurst({ seed = 0 }) {
   ), [seed])
 
   useFrame((_, delta) => {
-    if (!group.current) return
+    if (!group.current || elapsed.current >= 1.45) return
     elapsed.current += delta
     const progress = Math.min(1, elapsed.current / 1.45)
     group.current.visible = progress < 1
@@ -424,29 +413,6 @@ function SelectionMarker() {
   )
 }
 
-function GrassTuft({ position, scale = 1, color = '#70b74d', seed = 0 }) {
-  const group = useRef()
-  // Five blades share one draw call instead of five meshes/materials per tuft.
-  const geometry = useMemo(() => {
-    const blades = Array.from({ length: 5 }, (_, i) => {
-      const blade = new THREE.ConeGeometry(.045, .34, 4)
-      blade.rotateZ((i - 2) * .08)
-      blade.translate((i - 2) * .055, .17, (pseudo(seed + i) - .5) * .12)
-      return blade
-    })
-    const merged = mergeGeometries(blades)
-    blades.forEach((blade) => blade.dispose())
-    return merged
-  }, [seed])
-  useEffect(() => () => geometry.dispose(), [geometry])
-  useFrame((state) => {
-    if (group.current) group.current.rotation.z = Math.sin(state.clock.elapsedTime * .8 + seed) * .022
-  })
-  return <mesh ref={group} geometry={geometry} position={position} scale={scale}>
-    <meshStandardMaterial color={color} roughness={1} flatShading />
-  </mesh>
-}
-
 function Plot3D({ plot, selected, activeSpecies, onClick, storm }) {
   const [hovered, setHovered] = useState(false)
   const position = plotPosition(plot.id)
@@ -466,6 +432,12 @@ function Plot3D({ plot, selected, activeSpecies, onClick, storm }) {
   const occupied = Boolean(plot.species)
   const fit = suitability(plot, plot.species || activeSpecies)
   const borderColor = selected ? '#fff27b' : fit === 2 ? '#79bf4d' : fit === 1 ? '#e4b75f' : '#9a6a51'
+  const grass = useMemo(() => Array.from({ length: plot.tide === 'สูง' ? 5 : plot.tide === 'กลาง' ? 3 : 2 }, (_, index) => {
+    const angle = Math.PI * 2 * index / 5 + plot.id
+    return { position: [Math.cos(angle) * radiusX * .82, .03, Math.sin(angle) * radiusZ * .82],
+      scale: .62 + pseudo(plot.id * 11 + index) * .18,
+      color: plot.tide === 'สูง' ? '#69b64a' : '#7ab759' }
+  }), [plot.id, plot.tide, radiusX, radiusZ])
   const soilColor = {
     เลน: '#74543b',
     ตะกอน: '#8e6845',
@@ -516,21 +488,10 @@ function Plot3D({ plot, selected, activeSpecies, onClick, storm }) {
         </mesh>
       )}
 
-      {Array.from({ length: plot.tide === 'สูง' ? 5 : plot.tide === 'กลาง' ? 3 : 2 }, (_, index) => {
-        const angle = (Math.PI * 2 * index) / 5 + plot.id
-        return (
-          <GrassTuft
-            key={index}
-            position={[Math.cos(angle) * radiusX * 0.82, 0.03, Math.sin(angle) * radiusZ * 0.82]}
-            scale={0.62 + pseudo(plot.id * 11 + index) * 0.18}
-            color={plot.tide === 'สูง' ? '#69b64a' : '#7ab759'}
-            seed={plot.id * 10 + index}
-          />
-        )
-      })}
+      <GrassPatch items={grass} name={`plot-grass-${plot.id}`} />
 
       <group position={[-radiusX * 0.72, 0.06, radiusZ * 0.65]}>
-        <mesh position={[0, 0.28, 0]} castShadow>
+        <mesh position={[0, 0.28, 0]}>
           <cylinderGeometry args={[0.03, 0.04, 0.56, 6]} />
           <meshStandardMaterial color="#74482a" roughness={1} />
         </mesh>
@@ -611,25 +572,14 @@ function Boardwalk({ points, width = 0.72 }) {
     return result
   }, [points])
 
-  return (
-    <group>
-      {segments.map((segment, index) => (
-        <mesh
-          key={index}
-          position={[segment.x, 0.55, segment.z]}
-          rotation={[0, segment.rotation, segment.tilt]}
-          castShadow
-          receiveShadow
-        >
-          <boxGeometry args={[width, 0.12, segment.length]} />
-          <meshStandardMaterial color="#ae7240" roughness={1} />
-        </mesh>
-      ))}
-    </group>
-  )
+  const items = useMemo(() => segments.map((segment) => ({
+    position: [segment.x, .55, segment.z], rotation: [0, segment.rotation, segment.tilt],
+    scale: [width, .12, segment.length], color: '#ae7240',
+  })), [segments, width])
+  return <SceneryBatch name="boardwalk-planks" items={items} castShadow />
 }
 
-function CoastalTerrain() {
+const CoastalTerrain = memo(function CoastalTerrain() {
   const mudflat = useMemo(() => MUDFLAT_POINTS, [])
   const mainland = useMemo(() => MAINLAND_POINTS, [])
   const shore = useMemo(() => SHORE_POINTS, [])
@@ -657,106 +607,57 @@ function CoastalTerrain() {
       <ReedBeds />
     </group>
   )
-}
+})
 
 
-function MudflatDetails() {
-  const details = useMemo(() => (
-    Array.from({ length: 46 }, (_, index) => ({
-      x: -11.4 + pseudo(index * 5.33 + 2) * 22.8,
-      z: -8.6 + pseudo(index * 8.19 + 9) * 14.1,
-      scale: 0.45 + pseudo(index * 2.17 + 4) * 0.8,
-      type: index % 4,
-      rotation: pseudo(index * 7.7 + 11) * Math.PI * 2,
-    }))
-  ), [])
+const MudflatDetails = memo(function MudflatDetails() {
+  const batches = useMemo(() => {
+    const circles = [], shells = [], sticks = [], sprouts = [], grass = []
+    for (let index = 0; index < 46; index += 1) {
+      const x = -11.4 + pseudo(index * 5.33 + 2) * 22.8
+      const z = -8.6 + pseudo(index * 8.19 + 9) * 14.1
+      const scale = .45 + pseudo(index * 2.17 + 4) * .8
+      const rotation = pseudo(index * 7.7 + 11) * Math.PI * 2
+      if (index % 4 === 0) circles.push({ position: [x, .425, z], rotation: [-Math.PI / 2, 0, rotation],
+        scale: [scale * 1.45, scale, 1], color: '#523d30' })
+      else if (index % 4 === 1) shells.push({ position: [x, .455, z], rotation: [0, rotation, 0],
+        scale: [scale, scale * .32, scale * .62], color: index % 3 ? '#d9c392' : '#efe0b4' })
+      else if (index % 4 === 2) {
+        sticks.push({ position: [x, .445 + .03 * scale, z], rotation: [0, rotation, Math.PI / 2], scale, color: '#765139' })
+        const parent = new THREE.Object3D(), child = new THREE.Object3D()
+        parent.position.set(x, .445, z); parent.rotation.y = rotation; parent.scale.setScalar(scale)
+        child.position.set(.13, .05, .03); child.rotation.x = .3; parent.add(child); parent.updateMatrixWorld(true)
+        sprouts.push({ matrix: child.matrixWorld.clone(), color: '#8abc55' })
+      } else grass.push({ position: [x, .43, z], scale: scale * .42, color: index % 2 ? '#6cae4d' : '#80bd58' })
+    }
+    return { circles, shells, sticks, sprouts, grass }
+  }, [])
+  return <group name="mudflat-details">
+    <SceneryBatch name="mudflat-impressions" items={batches.circles} shape="circle" args={[.24, 12]} basic opacity={.1} receiveShadow={false} />
+    <SceneryBatch name="shore-shells" items={batches.shells} shape="sphere" args={[.11, 7, 5]} roughness={.95} />
+    <SceneryBatch name="shore-sticks" items={batches.sticks} shape="cylinder" args={[.022, .03, .48, 5]} />
+    <SceneryBatch name="shore-sprouts" items={batches.sprouts} shape="cone" args={[.045, .16, 5]} />
+    <GrassPatch items={batches.grass} name="mudflat-grass" />
+  </group>
+})
 
-  return (
-    <group>
-      {details.map((detail, index) => {
-        if (detail.type === 0) {
-          return (
-            <mesh
-              key={index}
-              position={[detail.x, 0.425, detail.z]}
-              rotation={[-Math.PI / 2, 0, detail.rotation]}
-              scale={[detail.scale * 1.45, detail.scale, 1]}
-            >
-              <circleGeometry args={[0.24, 12]} />
-              <meshBasicMaterial color="#523d30" transparent opacity={0.1} depthWrite={false} />
-            </mesh>
-          )
-        }
-        if (detail.type === 1) {
-          return (
-            <mesh
-              key={index}
-              position={[detail.x, 0.455, detail.z]}
-              rotation={[0, detail.rotation, 0]}
-              scale={[detail.scale, detail.scale * 0.32, detail.scale * 0.62]}
-              castShadow
-            >
-              <sphereGeometry args={[0.11, 7, 5]} />
-              <meshStandardMaterial color={index % 3 ? '#d9c392' : '#efe0b4'} roughness={0.95} />
-            </mesh>
-          )
-        }
-        if (detail.type === 2) {
-          return (
-            <group key={index} position={[detail.x, 0.445, detail.z]} rotation={[0, detail.rotation, 0]} scale={detail.scale}>
-              <mesh position={[0, 0.03, 0]} rotation={[0, 0, Math.PI / 2]} castShadow>
-                <cylinderGeometry args={[0.022, 0.03, 0.48, 5]} />
-                <meshStandardMaterial color="#765139" roughness={1} />
-              </mesh>
-              <mesh position={[0.13, 0.05, 0.03]} rotation={[0.3, 0, 0]}>
-                <coneGeometry args={[0.045, 0.16, 5]} />
-                <meshStandardMaterial color="#8abc55" roughness={1} />
-              </mesh>
-            </group>
-          )
-        }
-        return (
-          <GrassTuft
-            key={index}
-            position={[detail.x, 0.43, detail.z]}
-            scale={detail.scale * 0.42}
-            color={index % 2 ? '#6cae4d' : '#80bd58'}
-            seed={index + 600}
-          />
-        )
-      })}
-    </group>
-  )
-}
 
-function ReedBeds() {
-  const reeds = useMemo(() => (
-    Array.from({ length: 42 }, (_, index) => ({
-      x: index % 2 === 0 ? -10.5 - pseudo(index * 3.1) * 6.5 : 10.5 + pseudo(index * 3.1) * 6.5,
-      z: 6.9 + pseudo(index * 5.7) * 4.7,
-      scale: 0.62 + pseudo(index * 8.3) * 0.48,
-      color: index % 3 === 0 ? '#5ca843' : '#79bf54',
-    }))
-  ), [])
+const ReedBeds = memo(function ReedBeds() {
+  const reeds = useMemo(() => Array.from({ length: 42 }, (_, index) => ({
+    position: [index % 2 === 0 ? -10.5 - pseudo(index * 3.1) * 6.5 : 10.5 + pseudo(index * 3.1) * 6.5,
+      1.21, 6.9 + pseudo(index * 5.7) * 4.7],
+    scale: .62 + pseudo(index * 8.3) * .48,
+    color: index % 3 === 0 ? '#5ca843' : '#79bf54',
+  })), [])
+  return <GrassPatch items={reeds} name="shore-reeds" />
+})
 
-  return (
-    <group>
-      {reeds.map((reed, index) => (
-        <GrassTuft key={index} position={[reed.x, 1.21, reed.z]} scale={reed.scale} color={reed.color} seed={index} />
-      ))}
-    </group>
-  )
-}
 
 function Hut({ position, wall = '#ffd77c', roof = '#e5653c', scale = 1 }) {
+  const supports = useMemo(() => [-.82, .82].flatMap((x) => [-.62, .62].map((z) => ({ position: [x, .38, z], color: '#76482a' }))), [])
   return (
     <group position={position} scale={scale}>
-      {[-0.82, 0.82].map((x) => [-0.62, 0.62].map((z) => (
-        <mesh key={`${x}-${z}`} position={[x, 0.38, z]} castShadow>
-          <cylinderGeometry args={[0.055, 0.075, 0.76, 7]} />
-          <meshStandardMaterial color="#76482a" roughness={1} />
-        </mesh>
-      )))}
+      <SceneryBatch name="hut-supports" items={supports} shape="cylinder" args={[.055, .075, .76, 7]} castShadow />
       <RoundedBox args={[2.25, 1.4, 1.75]} radius={0.18} smoothness={3} position={[0, 1.3, 0]} castShadow receiveShadow>
         <meshStandardMaterial color={wall} roughness={0.78} />
       </RoundedBox>
@@ -780,8 +681,13 @@ function Hut({ position, wall = '#ffd77c', roof = '#e5653c', scale = 1 }) {
   )
 }
 
-function Nursery({ level }) {
-  const trays = Array.from({ length: 4 + level * 2 }, (_, index) => index)
+const Nursery = memo(function Nursery({ level }) {
+  const trays = useMemo(() => Array.from({ length: 4 + level * 2 }, (_, index) => ({
+    position: [-.9 + (index % 4) * .6, .17, -.48 + Math.floor(index / 4) * .55], color: '#9c6536',
+  })), [level])
+  const seedlings = useMemo(() => trays.map((tray, index) => ({
+    position: [tray.position[0], .34, tray.position[2]], color: index % 3 === 0 ? '#45a74b' : '#75bf50',
+  })), [trays])
 
   return (
     <group position={[-10.4, 1.19, 9.1]} rotation={[0, 0.08, 0]}>
@@ -795,22 +701,13 @@ function Nursery({ level }) {
           <boxGeometry args={[2.8, 0.14, 1.9]} />
           <meshStandardMaterial color="#75b650" roughness={1} />
         </mesh>
-        {trays.map((index) => (
-          <group key={index} position={[-0.9 + (index % 4) * 0.6, 0.17, -0.48 + Math.floor(index / 4) * 0.55]}>
-            <mesh castShadow>
-              <boxGeometry args={[0.42, 0.12, 0.34]} />
-              <meshStandardMaterial color="#9c6536" roughness={1} />
-            </mesh>
-            <mesh position={[0, 0.17, 0]}>
-              <coneGeometry args={[0.08, 0.28, 7]} />
-              <meshStandardMaterial color={index % 3 === 0 ? '#45a74b' : '#75bf50'} flatShading />
-            </mesh>
-          </group>
-        ))}
+        <SceneryBatch name="nursery-trays" items={trays} args={[.42, .12, .34]} castShadow />
+        <SceneryBatch name="nursery-seedlings" items={seedlings} shape="cone" args={[.08, .28, 7]} roughness={1} flatShading />
       </group>
     </group>
   )
-}
+})
+
 
 function Drone({ level }) {
   const drone = useRef()
@@ -830,7 +727,7 @@ function Drone({ level }) {
   })
 
   return (
-    <group ref={drone} position={[5, 5.2, -2]} scale={0.65 + level * 0.06}>
+    <group name="coast-drone" ref={drone} position={[5, 5.2, -2]} scale={0.65 + level * 0.06}>
       <RoundedBox args={[0.72, 0.22, 0.5]} radius={0.1} smoothness={3} castShadow>
         <meshStandardMaterial color={level >= 2 ? '#ffd754' : '#f8f8f3'} roughness={0.46} metalness={0.12} />
       </RoundedBox>
@@ -853,7 +750,7 @@ function Drone({ level }) {
   )
 }
 
-function DroneStation({ level }) {
+const DroneStation = memo(function DroneStation({ level }) {
   return (
     <group>
       <Hut position={[9.2, 1.19, 9.15]} wall="#eaf4ff" roof="#4a9fd4" scale={0.82} />
@@ -868,9 +765,10 @@ function DroneStation({ level }) {
       <Drone level={level} />
     </group>
   )
-}
+})
 
-function CommunityVillage({ level }) {
+
+const CommunityVillage = memo(function CommunityVillage({ level }) {
 
 
   return (
@@ -881,7 +779,8 @@ function CommunityVillage({ level }) {
       {level >= 2 && <MarketStall />}
     </group>
   )
-}
+})
+
 
 function MarketStall() {
   return (
@@ -910,24 +809,17 @@ function MarketStall() {
   )
 }
 
-function Dock() {
-  return (
-    <group position={[7.7, 0.14, 7.1]} rotation={[0, -0.62, 0]}>
-      {Array.from({ length: 8 }, (_, index) => (
-        <mesh key={index} position={[index * 0.56, 0, 0]} castShadow receiveShadow>
-          <boxGeometry args={[0.5, 0.14, 1.1]} />
-          <meshStandardMaterial color="#9b6639" roughness={1} />
-        </mesh>
-      ))}
-      {[0, 3.95].map((x) => (
-        <mesh key={x} position={[x, -0.42, -0.42]} castShadow>
-          <cylinderGeometry args={[0.075, 0.095, 1.12, 7]} />
-          <meshStandardMaterial color="#6e4a30" roughness={1} />
-        </mesh>
-      ))}
-    </group>
-  )
-}
+const Dock = memo(function Dock() {
+  const planks = useMemo(() => Array.from({ length: 8 }, (_, index) => ({
+    position: [index * .56, 0, 0], color: '#9b6639',
+  })), [])
+  const posts = useMemo(() => [0, 3.95].map((x) => ({ position: [x, -.42, -.42], color: '#6e4a30' })), [])
+  return <group position={[7.7, .14, 7.1]} rotation={[0, -.62, 0]}>
+    <SceneryBatch name="dock-planks" items={planks} args={[.5, .14, 1.1]} castShadow />
+    <SceneryBatch name="dock-posts" items={posts} shape="cylinder" args={[.075, .095, 1.12, 7]} castShadow />
+  </group>
+})
+
 
 function Boat() {
   const boat = useRef()
@@ -963,7 +855,7 @@ function Boat() {
   )
 }
 
-function DecorativeMangroves() {
+const DecorativeMangroves = memo(function DecorativeMangroves() {
   const trees = useMemo(() => ([
     [-14.7, 0.36, 0.6, 'avicennia', 8], [-12.0, 0.36, 5.2, 'rhizophora', 7],
     [-6.2, 1.18, 10.7, 'sonneratia', 9], [-0.2, 1.18, 10.4, 'avicennia', 7],
@@ -979,7 +871,8 @@ function DecorativeMangroves() {
       ))}
     </group>
   )
-}
+})
+
 
 function Crab({ position, seed = 0 }) {
   const group = useRef()
@@ -1067,7 +960,7 @@ function Bird({ seed = 0 }) {
   })
 
   return (
-    <group ref={group} scale={0.7}>
+    <group name={`coast-bird-${seed}`} ref={group} scale={0.7}>
       <mesh scale={[1.4, 0.5, 0.58]}>
         <sphereGeometry args={[0.13, 8, 6]} />
         <meshStandardMaterial color="#f8f4dd" roughness={0.7} />
@@ -1112,34 +1005,25 @@ function Wildlife({ plots, communityLevel }) {
 function CoastalBarriers({ plots, communityLevel }) {
   const mature = plots.filter((plot) => plot.species && !plot.dead && plot.age >= 6).length
   const count = Math.min(15, Math.max(0, mature + communityLevel * 2))
-
-  return (
-    <group>
-      {Array.from({ length: count }, (_, index) => {
-        const x = -11.5 + index * 1.6
-        const z = -9.45 + Math.sin(index * 0.8) * 0.48
-        return (
-          <group key={index}>
-            <mesh position={[x, 0.1, z]} rotation={[0, 0, (index % 2 ? 1 : -1) * 0.07]} castShadow>
-              <cylinderGeometry args={[0.075, 0.11, 1.25, 7]} />
-              <meshStandardMaterial color="#93603a" roughness={1} />
-            </mesh>
-            {index > 0 && (
-              <CylinderBetween
-                start={[-11.5 + (index - 1) * 1.6, 0.45, -9.45 + Math.sin((index - 1) * 0.8) * 0.48]}
-                end={[x, 0.45, z]}
-                radius={0.026}
-                color="#93603a"
-              />
-            )}
-          </group>
-        )
-      })}
-    </group>
-  )
+  const { posts, rails } = useMemo(() => {
+    const posts = [], rails = []
+    for (let index = 0; index < count; index += 1) {
+      const x = -11.5 + index * 1.6, z = -9.45 + Math.sin(index * .8) * .48
+      posts.push({ position: [x, .1, z], rotation: [0, 0, (index % 2 ? 1 : -1) * .07], color: '#93603a' })
+      if (index > 0) rails.push(branchInstance([-11.5 + (index - 1) * 1.6, .45, -9.45 + Math.sin((index - 1) * .8) * .48], [x, .45, z], .026, '#93603a'))
+    }
+    return { posts, rails }
+  }, [count])
+  return <group>
+    {posts.length > 0 && <SceneryBatch name="barrier-posts" items={posts} shape="cylinder" args={[.075, .11, 1.25, 7]} castShadow />}
+    {rails.length > 0 && <SceneryBatch name="barrier-rails" items={rails} shape="cylinder" args={[1, 1.12, 1, 7]} roughness={.92} flatShading />}
+  </group>
 }
 
-function Clouds() {
+const Clouds = memo(function Clouds() {
+  const resources = useWorldResources()
+  const geometry = resources.geometry('sphere', [.8, 14, 10])
+  const material = resources.material({ color: '#ffffff', roughness: .96, transparent: true, opacity: .92 })
   const clouds = [
     [-11, 8.5, -10, 1.25], [7, 9.5, -12, 1], [14, 7.6, 3, 0.78], [-3, 10, 14, 0.9],
   ]
@@ -1152,17 +1036,15 @@ function Clouds() {
             {[
               [-0.7, 0, 0, 0.66], [0, 0.18, 0, 0.9], [0.72, 0, 0.02, 0.62], [0.16, -0.12, 0.08, 0.72],
             ].map(([cx, cy, cz, sphereScale], cloudIndex) => (
-              <mesh key={cloudIndex} position={[cx, cy, cz]} scale={sphereScale}>
-                <sphereGeometry args={[0.8, 14, 10]} />
-                <meshStandardMaterial color="#ffffff" roughness={0.96} transparent opacity={0.92} />
-              </mesh>
+              <mesh key={cloudIndex} position={[cx, cy, cz]} scale={sphereScale} geometry={geometry} material={material} dispose={null} />
             ))}
           </group>
         </Float>
       ))}
     </group>
   )
-}
+})
+
 
 function CameraRig({ selectedPlot, cameraReset }) {
   const controls = useRef()
@@ -1221,31 +1103,38 @@ function CameraRig({ selectedPlot, cameraReset }) {
   )
 }
 
-function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades, day, weather, fireflies, cameraReset, habitat, clean, protection, action }) {
+function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades, day, weather, fireflies, cameraReset, habitat, clean, protection, action, quality, onReady }) {
   const storm = weather === 'storm' || weather === 'kingtide'
-  const forecast = forecastFor(day)
+  const crewTarget = useMemo(() => action?.plotId
+    ? plotPosition(action.plotId).map((v, i) => i === 0 ? v + .8 : v)
+    : action?.type === 'clean' ? [0, .48, -8.3]
+    : action?.type === 'patrol' ? [1, .48, -9.4] : null, [action])
+  const forecast = useMemo(() => forecastFor(day), [day])
   const golden = forecast.golden
   const skyColor = storm ? '#84a9b5' : golden ? '#b6c8ba' : '#94d2d4'
 
   return (
     <>
-      {import.meta.env.DEV && <WorldDiagnostics />}
+      <WorldPerformance plotPositions={PLOT_POSITIONS} quality={quality} onReady={onReady} />
       <color attach="background" args={[skyColor]} />
-      <fog attach="fog" args={[skyColor, 34, 68]} />
-      <ambientLight intensity={storm ? 0.65 : 0.65} />
+      <fog attach="fog" args={[skyColor, 38, 72]} />
+      <ambientLight intensity={0.62} />
       <hemisphereLight args={[golden ? '#ffe7bb' : '#e3fbfa', '#5f684c', 1.25]} />
       <directionalLight
         castShadow
         position={[14, 22, 9]}
         color={golden ? '#ffde9e' : '#fff6df'}
-        intensity={storm ? 1.15 : golden ? 2.6 : 2.4}
-        shadow-mapSize-width={1024}
-        shadow-mapSize-height={1024}
+        intensity={storm ? 1.15 : golden ? 2.4 : 2.2}
+        shadow-mapSize-width={quality.shadowSize}
+        shadow-mapSize-height={quality.shadowSize}
         shadow-camera-left={-20}
         shadow-camera-right={20}
         shadow-camera-top={20}
         shadow-camera-bottom={-20}
         shadow-bias={-0.0004}
+        shadow-normalBias={0.025}
+        shadow-camera-near={0.5}
+        shadow-camera-far={70}
       />
 
       <LivingWater tide={forecast.tideOffset} storm={storm} score={habitat?.score || 0} golden={golden} />
@@ -1257,7 +1146,7 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
       <Nursery level={upgrades.nursery} />
       <DroneStation level={upgrades.mrv} />
       <CommunityVillage level={upgrades.community} />
-      <CoastCharacters action={action} target={action?.plotId ? plotPosition(action.plotId).map((v,i) => i === 0 ? v + .8 : v) : action?.type === "clean" ? [0,.48,-8.3] : action?.type === "patrol" ? [1,.48,-9.4] : null} storm={storm} />
+      <CoastCharacters action={action} target={crewTarget} storm={storm} />
       <Dock />
       <Boat />
 
@@ -1290,45 +1179,36 @@ function WorldScene({ plots, selectedPlot, activeSpecies, onPlotClick, upgrades,
   )
 }
 
-// Read-only local diagnostics for browser QA. Removed from the production tree.
-function WorldDiagnostics() {
-  const { gl, scene, camera } = useThree()
-  useEffect(() => {
-    if (!new URLSearchParams(location.search).has('qa')) return
-    window.__coastDiagnostics = () => {
-      const actors = []
-      scene.traverse((o) => {
-        if (!/^(crew-|coast-boat|coast-crab-|coast-fish-)/.test(o.name)) return
-        const actor = { name:o.name, position:o.position.toArray(), state:o.userData.workerState, task:o.userData.workerTask }
-        if (o.name.startsWith('crew-')) {
-          const head = o.getObjectByName('head')
-          const projected = (head || o).getWorldPosition(new THREE.Vector3()).project(camera)
-          const ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2(projected.x,projected.y),camera)
-          actor.pickHits = ray.intersectObject(o,true).length
-          actor.parts = []; o.traverse((part) => { if (part.isMesh && part.name) actor.parts.push(part.name) })
-        }
-        actors.push(actor)
-      })
-      return { calls: gl.info.render.calls, triangles: gl.info.render.triangles, actors,
-        plots: PLOT_POSITIONS.map(([x,z],i) => { const p = new THREE.Vector3(x,.65,z).project(camera); return { id: i+1, x: (p.x+1)/2*gl.domElement.clientWidth, y: (1-p.y)/2*gl.domElement.clientHeight } }) }
-    }
-    return () => { delete window.__coastDiagnostics }
-  }, [gl,scene,camera])
-  return null
-}
-
 function RestorationScenery({ clean, stage, protection }) {
   const litter = useRef()
   const target = clean ? .001 : 1
+  const debris = useMemo(() => {
+    const bottles = [], caps = []
+    for (let i = 0; i < Math.max(3, 9 - stage * 2); i += 1) {
+      const parent = new THREE.Object3D(), cap = new THREE.Object3D()
+      parent.position.set(-10.5 + i * 2.3, .52, -8.2 + Math.sin(i * 3) * .7)
+      parent.rotation.set(.1, i, 1.1); cap.position.y = .15; parent.add(cap); parent.updateMatrixWorld(true)
+      bottles.push({ matrix: parent.matrixWorld.clone(), color: i % 2 ? '#ced0c1' : '#72adbe' })
+      caps.push({ matrix: cap.matrixWorld.clone(), color: '#e98863' })
+    }
+    return { bottles, caps }
+  }, [stage])
+  const grass = useMemo(() => Array.from({ length: stage * 8 }, (_, i) => ({
+    position: [-10.8 + pseudo(i * 5.2 + 2) * 20, .44, -8 + pseudo(i * 7.1 + 12) * 13],
+    scale: .35 + pseudo(i * 9.3) * .5, color: i % 2 ? '#7aaf67' : '#428c65',
+  })), [stage])
   useFrame((_, dt) => {
-    if (!litter.current) return
-    const size = THREE.MathUtils.damp(litter.current.scale.x, target, 5, dt)
+    if (!litter.current || Math.abs(litter.current.scale.x - target) < .0001) return
+    const size = THREE.MathUtils.damp(litter.current.scale.x, target, 5, Math.min(dt, .1))
     litter.current.scale.setScalar(size)
     litter.current.visible = size > .01
   })
   return <group>
-    <group ref={litter}>{Array.from({ length: Math.max(3, 9 - stage * 2) }, (_, i) => <group key={i} position={[-10.5 + i * 2.3, .52, -8.2 + Math.sin(i * 3) * .7]} rotation={[.1, i, 1.1]}><mesh><cylinderGeometry args={[.06, .06, .3, 6]} /><meshStandardMaterial color={i % 2 ? '#ced0c1' : '#72adbe'} /></mesh><mesh position={[0, .15, 0]}><boxGeometry args={[.07,.08,.07]} /><meshStandardMaterial color="#e98863" /></mesh></group>)}</group>
-    {Array.from({ length: stage * 8 }, (_, i) => <GrassTuft key={i} position={[-10.8 + pseudo(i * 5.2 + 2) * 20, .44, -8 + pseudo(i * 7.1 + 12) * 13]} scale={.35 + pseudo(i * 9.3) * .5} color={i % 2 ? '#7aaf67' : '#428c65'} seed={i + 1200} />)}
+    <group ref={litter}>
+      <SceneryBatch name="restoration-debris" items={debris.bottles} shape="cylinder" args={[.06, .06, .3, 6]} roughness={1} />
+      <SceneryBatch name="debris-caps" items={debris.caps} args={[.07, .08, .07]} roughness={1} />
+    </group>
+    {grass.length > 0 && <GrassPatch items={grass} name="restoration-grass" />}
     {protection && [-7,-3,1,5].map((x) => <group key={x} position={[x,.45,-9.5]}><mesh position={[0,.3,0]}><cylinderGeometry args={[.035,.05,1.1,6]} /><meshStandardMaterial color="#887252" /></mesh><mesh position={[.15,.68,0]}><planeGeometry args={[.3,.23]} /><meshStandardMaterial color="#eec866" side={THREE.DoubleSide} /></mesh></group>)}
     {stage >= 2 && <group position={[8.3,.5,3.5]}><mesh position={[0,.55,0]}><cylinderGeometry args={[.045,.06,1.1,6]} /><meshStandardMaterial color="#9e8357" /></mesh><mesh position={[0,1.1,0]}><boxGeometry args={[.8,.45,.09]} /><meshStandardMaterial color="#276c58" /></mesh><mesh position={[0,1.12,.06]}><circleGeometry args={[.11,8]} /><meshBasicMaterial color="#edd599" /></mesh></group>}
   </group>
@@ -1357,7 +1237,8 @@ function Rain() {
   return <points ref={points}><bufferGeometry><bufferAttribute attach="attributes-position" args={[positions, 3]} /></bufferGeometry><pointsMaterial color="#d9f5ed" size={0.075} transparent opacity={0.65} depthWrite={false} /></points>
 }
 
-function WebGLFallback() {
+function WebGLFallback({ onReady }) {
+  useEffect(() => { onReady?.(true) }, [onReady])
   return (
     <div className="webgl-fallback">
       <strong>เปิดฉาก 3D ไม่สำเร็จ</strong>
@@ -1366,20 +1247,22 @@ function WebGLFallback() {
   )
 }
 
-export default function MangroveWorld3DNatural(props) {
+const MangroveWorld3DNatural = memo(function MangroveWorld3DNatural(props) {
+  const quality = useDeviceQuality()
   return (
     <div className="world-canvas natural-world" aria-label="ฉากป่าชายเลนสามมิติแบบโต้ตอบ">
       <Canvas
         orthographic
-        shadows
-        dpr={[1, 1.4]}
+        shadows={{ type: THREE.PCFSoftShadowMap }}
+        dpr={[1, quality.maxDpr]}
         camera={{ position: [20, 18, 22], zoom: 36, near: 0.1, far: 140 }}
         gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
-        fallback={<WebGLFallback />}
+        fallback={<WebGLFallback onReady={props.onReady} />}
         onPointerMissed={() => props.onClearSelection?.()}
       >
-        <WorldScene {...props} />
+        <WorldResources><WorldScene {...props} quality={quality} /></WorldResources>
       </Canvas>
     </div>
   )
-}
+})
+export default MangroveWorld3DNatural
