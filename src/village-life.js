@@ -59,15 +59,15 @@ export const villageResidents = [
 ]
 
 const actionReactions = {
-  plant:{ ids:['mee','dao','noi'], text:'ปลูกเพิ่มแล้ว เยี่ยมเลย!', mood:'cheer' },
-  care:{ ids:['mee','dao'], text:'ต้นไม้แข็งแรงขึ้นแน่', mood:'cheer' },
-  maintenance:{ ids:['mee','dao'], text:'ต้นไม้แข็งแรงขึ้นแน่', mood:'cheer' },
-  clean:{ ids:['som','noi','dao'], text:'ชายฝั่งสะอาดขึ้นแล้ว', mood:'cheer' },
-  cleanup:{ ids:['som','noi','dao'], text:'ชายฝั่งสะอาดขึ้นแล้ว', mood:'cheer' },
-  clear:{ ids:['som','dao'], text:'ทางโล่งขึ้น ทำงานง่ายเลย', mood:'cheer' },
-  survey:{ ids:['dao','som'], text:'เจอสัตว์อะไรใหม่ไหม?', mood:'curious' },
-  patrol:{ ids:['som','chai'], text:'เดี๋ยวช่วยดูแนวชายฝั่ง', mood:'ready' },
-  mrv:{ ids:['dao','chai','noi'], text:'ข้อมูลพร้อมแล้ว ไปต่อได้!', mood:'cheer' },
+  plant:{ ids:['mee','dao','noi'], speaker:'mee', text:'ปลูกเพิ่มแล้ว เยี่ยมเลย!', mood:'cheer' },
+  care:{ ids:['mee','dao'], speaker:'dao', text:'ต้นไม้แข็งแรงขึ้นแน่', mood:'cheer' },
+  maintenance:{ ids:['mee','dao'], speaker:'dao', text:'ต้นไม้แข็งแรงขึ้นแน่', mood:'cheer' },
+  clean:{ ids:['som','noi','dao'], speaker:'som', text:'ชายฝั่งสะอาดขึ้นแล้ว', mood:'cheer' },
+  cleanup:{ ids:['som','noi','dao'], speaker:'som', text:'ชายฝั่งสะอาดขึ้นแล้ว', mood:'cheer' },
+  clear:{ ids:['som','dao'], speaker:'dao', text:'ทางโล่งขึ้น ทำงานง่ายเลย', mood:'cheer' },
+  survey:{ ids:['dao','som'], speaker:'dao', text:'เจอสัตว์อะไรใหม่ไหม?', mood:'curious' },
+  patrol:{ ids:['som','chai'], speaker:'chai', text:'เดี๋ยวช่วยดูแนวชายฝั่ง', mood:'ready' },
+  mrv:{ ids:['dao','chai','noi'], speaker:'noi', text:'ข้อมูลพร้อมแล้ว ไปต่อได้!', mood:'cheer' },
 }
 
 export function villagePhase(elapsedSeconds) {
@@ -85,7 +85,7 @@ export function villageReaction(action,residentId) {
   if(!action?.type) return null
   const reaction=actionReactions[action.type]
   if(!reaction || !reaction.ids.includes(residentId)) return null
-  return { text:reaction.text, mood:reaction.mood }
+  return { text:reaction.text, mood:reaction.mood, speak:reaction.speaker===residentId }
 }
 
 export function socialPairs(elapsedSeconds) {
