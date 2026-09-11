@@ -44,9 +44,11 @@ export const SceneryBatch = memo(function SceneryBatch({
     // Shader wind moves only the blade tips; keep frustum bounds conservative.
     if (mesh.boundingSphere) mesh.boundingSphere.radius += .08
   }, [items, mesh])
+  // R3F never auto-disposes primitives. Do not pass dispose={null}: in fiber 8
+  // that prop overwrites InstancedMesh.dispose and breaks count-change cleanup.
   useEffect(() => () => mesh.dispose(), [mesh])
   return <primitive object={mesh} name={name} castShadow={castShadow}
-    receiveShadow={receiveShadow} dispose={null} />
+    receiveShadow={receiveShadow} />
 })
 
 export const GrassPatch = memo(function GrassPatch({ items, name = 'grass-patch' }) {
