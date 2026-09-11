@@ -23,16 +23,21 @@ jobs:
         run: npm test | tee /tmp/tests.txt
       - name: Build
         run: npm run build | tee /tmp/build.txt
-      - name: Capture source and baseline
-        run: |
-          mkdir -p performance-artifacts
-          git archive --format=tar --output=performance-artifacts/source.tar HEAD
-          cp /tmp/tests.txt /tmp/build.txt performance-artifacts/
-          git rev-parse HEAD > performance-artifacts/commit.txt
-      - name: Capture offline QA runtime
+      - name: Install browser QA tools (not app dependencies)
         run: |
           npm install --no-save --package-lock=false playwright@1.55.0
-          tar -czf performance-artifacts/runtime.tar.gz node_modules dist
+          npx playwright install --with-deps chromium
+      - name: Visual QA and console checks
+        env:
+          QA_LOCAL_SERVER: '1'
+          QA_OUTPUT: performance-artifacts/visual-qa
+        run: node scripts/visual-qa.mjs
+      - name: Capture verification
+        if: always()
+        run: |
+          mkdir -p performance-artifacts
+          cp /tmp/tests.txt /tmp/build.txt performance-artifacts/
+          git rev-parse HEAD > performance-artifacts/commit.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
