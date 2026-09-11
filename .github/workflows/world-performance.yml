@@ -1,0 +1,38 @@
+name: World performance
+
+on:
+  push:
+    branches: [perf/world-polish]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Test
+        run: npm test | tee /tmp/tests.txt
+      - name: Build
+        run: npm run build | tee /tmp/build.txt
+      - name: Capture source and baseline
+        run: |
+          mkdir -p performance-artifacts
+          git archive --format=tar --output=performance-artifacts/source.tar HEAD
+          cp /tmp/tests.txt /tmp/build.txt performance-artifacts/
+          git rev-parse HEAD > performance-artifacts/commit.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: world-performance-${{ github.sha }}
+          path: performance-artifacts/
+          retention-days: 7
+          if-no-files-found: error
