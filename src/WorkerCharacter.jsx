@@ -59,7 +59,7 @@ export default function WorkerCharacter({ variant:v, index, action, target }) {
       <Part name="belt-buckle" color={accent} position={[0,.69,.137]} scale={[.065,.05,.016]} />
       <Part name="utility-bag" color={gear} position={[-.23,.66,-.02]} scale={[.12,.18,.14]} />
       <Part name="cross-body-strap" color={gear} position={[.015,.94,.182]} scale={[.038,.49,.025]} rotation={[0,0,-.4]} />
-      <Part name="crew-badge" color={accent} position={[.12,1.04,.185]} scale={[.075,.055,.014]} />
+      <Part name="field-badge" color={accent} position={[.12,1.04,.185]} scale={[.075,.055,.014]} />
       <Part name="shirt-collar-left" color={accent} position={[-.07,1.16,.15]} scale={[.11,.07,.022]} rotation={[0,0,-.42]} />
       <Part name="shirt-collar-right" color={accent} position={[.07,1.16,.15]} scale={[.11,.07,.022]} rotation={[0,0,.42]} />
       {[-1,1].map(side=><group key={side}>
