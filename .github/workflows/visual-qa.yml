@@ -38,9 +38,14 @@ jobs:
       - name: Capture screenshots and exercise the core loop
         run: node scripts/visual-qa.mjs
 
+      - name: Check iPhone portrait and landscape shell
+        run: node scripts/mobile-shell-qa.mjs
+
       - name: Print browser diagnostics even on failure
         if: always()
-        run: cat visual-qa/qa-report.json 2>/dev/null || true
+        run: |
+          cat visual-qa/qa-report.json 2>/dev/null || true
+          cat visual-qa/mobile-shell-report.json 2>/dev/null || true
 
       - name: Upload visual QA artifact
         if: always()
