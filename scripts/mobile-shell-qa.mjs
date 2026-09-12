@@ -91,13 +91,42 @@ async function inspectViewport(viewport, name) {
   }
 
   await page.screenshot({ path: `${outputDir}/${name}.png` })
-  report.viewports.push({ name, ...layout })
+
+  // Selecting an empty plot must expose the planting CTA without requiring a
+  // hidden scroll inside the short landscape details card.
+  await page.locator('.utility-rail button[aria-label="เปิดแผนที่แปลง"]').click()
+  await page.waitForSelector('.plot-picker')
+  await page.locator('.plot-picker button').nth(4).click()
+  await page.waitForSelector('.confirm-plant')
+  const plotAction = await page.evaluate(() => {
+    const card = document.querySelector('.selected-plot-card')
+    const button = document.querySelector('.confirm-plant')
+    const cardBox = card?.getBoundingClientRect()
+    const buttonBox = button?.getBoundingClientRect()
+    if (!cardBox || !buttonBox) return null
+    const hit = document.elementFromPoint(buttonBox.x + buttonBox.width / 2, buttonBox.y + buttonBox.height / 2)
+    return {
+      card: { x: cardBox.x, y: cardBox.y, width: cardBox.width, height: cardBox.height },
+      button: { x: buttonBox.x, y: buttonBox.y, width: buttonBox.width, height: buttonBox.height },
+      reachable: Boolean(hit && (hit === button || button.contains(hit))),
+    }
+  })
+  assert.ok(plotAction, 'selected plot and confirm planting action must exist')
+  assert.ok(plotAction.button.x >= -1 && plotAction.button.y >= -1, `confirm planting starts outside viewport: ${JSON.stringify(plotAction.button)}`)
+  assert.ok(plotAction.button.x + plotAction.button.width <= layout.viewport.width + 1, `confirm planting overflows horizontally: ${JSON.stringify(plotAction.button)}`)
+  assert.ok(plotAction.button.y + plotAction.button.height <= layout.viewport.height + 1, `confirm planting overflows vertically: ${JSON.stringify(plotAction.button)}`)
+  assert.ok(plotAction.button.height >= 43.5, `confirm planting touch target too small: ${JSON.stringify(plotAction.button)}`)
+  assert.equal(plotAction.reachable, true, 'confirm planting must be the reachable topmost control at its center point')
+  await page.screenshot({ path: `${outputDir}/${name}-plot-confirm.png` })
+
+  report.viewports.push({ name, ...layout, plotAction })
   await context.close()
 }
 
 try {
   await inspectViewport({ width: 390, height: 844 }, 'iphone-portrait-390x844')
   await inspectViewport({ width: 844, height: 390 }, 'iphone-landscape-844x390')
+  await inspectViewport({ width: 926, height: 428 }, 'iphone-pro-max-landscape-926x428')
   assert.deepEqual(report.errors, [], 'browser console/page errors')
 } finally {
   await fs.writeFile(`${outputDir}/mobile-shell-report.json`, JSON.stringify(report, null, 2))
