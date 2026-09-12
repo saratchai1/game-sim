@@ -126,6 +126,7 @@ async function inspectViewport(viewport, name) {
 try {
   await inspectViewport({ width: 390, height: 844 }, 'iphone-portrait-390x844')
   await inspectViewport({ width: 844, height: 390 }, 'iphone-landscape-844x390')
+  await inspectViewport({ width: 926, height: 428 }, 'iphone-pro-max-landscape-926x428')
   assert.deepEqual(report.errors, [], 'browser console/page errors')
 } finally {
   await fs.writeFile(`${outputDir}/mobile-shell-report.json`, JSON.stringify(report, null, 2))
