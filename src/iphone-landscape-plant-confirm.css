@@ -1,0 +1,85 @@
+/* Keep the plot confirmation action visible in short iPhone landscape viewports.
+   The previous 125px card cap clipped the empty-plot action below the scroll area. */
+@media (orientation: landscape) and (max-width: 900px) and (max-height: 520px) {
+  .selected-plot-card:has(.confirm-plant) {
+    right: calc(8px + var(--safe-right));
+    left: auto;
+    bottom: calc(188px + var(--safe-bottom));
+    width: 240px;
+    min-height: 144px;
+    max-height: 144px;
+    overflow: hidden;
+    padding: 8px 9px 54px;
+  }
+
+  .selected-plot-card:has(.confirm-plant) > small {
+    padding-right: 40px;
+    font-size: 7px;
+    line-height: 1.1;
+  }
+
+  .selected-plot-card:has(.confirm-plant) > strong {
+    display: block;
+    margin-top: 3px;
+    padding-right: 38px;
+    font-size: 14px;
+    line-height: 1.15;
+  }
+
+  .selected-plot-card:has(.confirm-plant) .selected-tags {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 4px;
+    margin-top: 5px;
+  }
+
+  .selected-plot-card:has(.confirm-plant) .selected-tags span {
+    padding: 3px 6px;
+    font-size: 7px;
+    white-space: nowrap;
+  }
+
+  .selected-plot-card:has(.confirm-plant) .fit-preview {
+    max-height: 29px;
+    margin: 5px 0 0;
+    overflow: hidden;
+    padding: 5px 7px;
+    font-size: 7.5px;
+    line-height: 1.25;
+  }
+
+  .selected-plot-card:has(.confirm-plant) .confirm-plant {
+    position: absolute;
+    right: 9px;
+    bottom: 8px;
+    left: 9px;
+    min-height: 44px;
+    margin: 0;
+  }
+
+  /* Sandy plots expose two actions. Keep both available instead of hiding the
+     soil-preparation action behind the fixed confirmation button. */
+  .selected-plot-card:has(.soil-action) {
+    width: 320px;
+  }
+
+  .selected-plot-card:has(.soil-action) .soil-action,
+  .selected-plot-card:has(.soil-action) .confirm-plant {
+    position: absolute;
+    bottom: 8px;
+    min-height: 44px;
+    margin: 0;
+    font-size: 8px;
+  }
+
+  .selected-plot-card:has(.soil-action) .soil-action {
+    left: 9px;
+    width: calc(50% - 13px);
+  }
+
+  .selected-plot-card:has(.soil-action) .confirm-plant {
+    right: 9px;
+    left: auto;
+    width: calc(50% - 13px);
+  }
+}
