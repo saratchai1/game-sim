@@ -1,6 +1,7 @@
 /* Keep the plot confirmation action visible in short iPhone landscape viewports.
-   The previous 125px card cap clipped the empty-plot action below the scroll area. */
-@media (orientation: landscape) and (max-width: 900px) and (max-height: 520px) {
+   The previous 125px card cap clipped the empty-plot action below the scroll area.
+   Use a 1024px landscape ceiling because Pro Max class iPhones can report >900 CSS px wide. */
+@media (orientation: landscape) and (max-width: 1024px) and (max-height: 520px) {
   .selected-plot-card:has(.confirm-plant) {
     right: calc(8px + var(--safe-right));
     left: auto;
