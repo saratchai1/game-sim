@@ -52,16 +52,18 @@ try {
   const saved=await desktop.page.evaluate(key=>JSON.parse(localStorage.getItem(key)),SAVE_KEY)
   assert.ok(saved.player.x<-.5,'WASD movement must change the player position')
   report.movementAndSupply={passed:true,x:saved.player.x,seeds:saved.seeds}
-  const fixture=createState();fixture.seeds=[3,3,3];Object.assign(fixture.player,{x:SITES[0].x,z:SITES[0].z,y:floorHeight(SITES[0].x,SITES[0].z)})
-  await desktop.page.evaluate(({key,data})=>localStorage.setItem(key,JSON.stringify(data)),{key:SAVE_KEY,data:fixture})
-  await desktop.page.reload({waitUntil:'networkidle'});await desktop.page.waitForSelector('canvas[data-ready="true"]');await desktop.page.click('#start')
-  await hold(desktop.page,'e',key=>JSON.parse(localStorage.getItem(key)).sites[0].plantedAt!==null)
-  assert.equal(await desktop.page.evaluate(key=>JSON.parse(localStorage.getItem(key)).seeds[0],SAVE_KEY),2)
-  report.holdToPlant=true
-  await desktop.page.click('#pause');const oldTime=await desktop.page.evaluate(key=>JSON.parse(localStorage.getItem(key)).time,SAVE_KEY)
-  await desktop.page.waitForTimeout(1000);assert.equal(await desktop.page.evaluate(key=>JSON.parse(localStorage.getItem(key)).time,SAVE_KEY),oldTime)
-  report.pause=true
   await desktop.context.close()
+
+  // A new context prevents the running game's pagehide save from overwriting a test fixture.
+  const fixture=createState();fixture.seeds=[3,3,3];Object.assign(fixture.player,{x:SITES[0].x,z:SITES[0].z,y:floorHeight(SITES[0].x,SITES[0].z)})
+  const planting=await pageFor({width:1440,height:900},false,fixture)
+  await hold(planting.page,'e',key=>JSON.parse(localStorage.getItem(key)).sites[0].plantedAt!==null)
+  assert.equal(await planting.page.evaluate(key=>JSON.parse(localStorage.getItem(key)).seeds[0],SAVE_KEY),2)
+  report.holdToPlant=true
+  await planting.page.click('#pause');const oldTime=await planting.page.evaluate(key=>JSON.parse(localStorage.getItem(key)).time,SAVE_KEY)
+  await planting.page.waitForTimeout(1000);assert.equal(await planting.page.evaluate(key=>JSON.parse(localStorage.getItem(key)).time,SAVE_KEY),oldTime)
+  report.pause=true
+  await planting.context.close()
   for(const [name,viewport,mobile,fixture] of [
     ['action-developed',{width:1440,height:900},false,developed()],
     ['action-mobile',{width:390,height:844},true,null],
