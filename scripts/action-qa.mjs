@@ -41,7 +41,8 @@ async function touchJoystick(page,context) {
   await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x+22,y,id:1}]})
   await page.waitForTimeout(250)
   await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
-  await cdp.detach()
+  // Closing a CDP session can reset Chromium touch emulation. Keep it until context.close().
+  assert.equal(await page.evaluate(()=>matchMedia('(pointer:coarse)').matches),true,'Screenshot must retain the real mobile input layout')
 }
 try {
   const desktop=await pageFor({width:1440,height:900})
@@ -70,7 +71,7 @@ try {
     ['action-landscape',{width:844,height:390},true,developed()],
   ]) {
     const{context,page}=await pageFor(viewport,mobile,fixture)
-    if(mobile){const b=await page.locator('#touch-e').boundingBox();assert.ok(b&&b.width>=44&&b.x+b.width<=viewport.width,'Touch action must remain on-screen');await touchJoystick(page,context)}
+    if(mobile){const b=await page.locator('#touch-e').boundingBox();assert.ok(b&&b.width>=44&&b.x+b.width<=viewport.width,'Touch action must remain on-screen');await touchJoystick(page,context);assert.equal(await page.locator('#touch-e').isVisible(),true)}
     await page.screenshot({path:`${output}/${name}.png`});report[name]=true;await context.close()
   }
   const complete=developed();complete.samples=3;complete.sites.slice(0,3).forEach(p=>{p.sampled=true});Object.assign(complete.player,{x:STATION.x,z:STATION.z,y:floorHeight(STATION.x,STATION.z)})
