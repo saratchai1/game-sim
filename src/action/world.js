@@ -5,12 +5,14 @@ import { CAMP, CACHES, FOREST, LOGS, MUD, SITES, SPECIES, STATION, TRASH, terrai
 export class RangerWorld {
   constructor(host) {
     this.host = host; this.resources = new Set(); this.plants = []; this.debris = []
+    this.cameraObstacles = []; this.cameraRay = new THREE.Raycaster(); this.shadowTime = -1
     this.scene = new THREE.Scene(); this.scene.background = new THREE.Color('#b9cabb')
     this.scene.fog = new THREE.FogExp2('#b9cabb', 0.021)
     this.camera = new THREE.PerspectiveCamera(53, 1, 0.08, 130)
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' })
     this.renderer.setPixelRatio(Math.min(devicePixelRatio || 1, matchMedia('(pointer:coarse)').matches ? 1.25 : 1.6))
     this.renderer.shadowMap.enabled = true; this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    this.renderer.shadowMap.autoUpdate = false; this.renderer.shadowMap.needsUpdate = true
     this.renderer.outputColorSpace = THREE.SRGBColorSpace; this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.toneMappingExposure = 1.05
     this.renderer.domElement.setAttribute('aria-label', 'ฉากแอ็กชันป่าชายเลนสามมิติ')
@@ -19,7 +21,7 @@ export class RangerWorld {
     this.sun = new THREE.DirectionalLight('#ffe6ac', 3.2)
     this.sun.position.set(-22, 37, -29); this.sun.castShadow = true
     Object.assign(this.sun.shadow.camera, { left: -38, right: 38, top: 45, bottom: -45, near: 1, far: 100 })
-    this.sun.shadow.mapSize.set(2048, 2048); this.sun.shadow.bias = -0.0003; this.sun.shadow.normalBias = 0.055
+    this.sun.shadow.mapSize.set(1536, 1536); this.sun.shadow.bias = -0.0003; this.sun.shadow.normalBias = 0.055
     this.sun.target.position.set(0, 0, -12); this.scene.add(this.sun, this.sun.target)
     this.scene.add(new THREE.AmbientLight('#b8c6a1', 0.2))
     this.g = {
@@ -35,7 +37,8 @@ export class RangerWorld {
       soil: this.mat('#503a27'), gold: this.mat('#dca952'), teal: this.mat('#86d9bc'),
     }
     this.buildTerrain(); this.buildForest(); this.buildCamp(); this.buildCourse(); this.buildCharacter(); this.buildAtmosphere()
-    this.camera.position.set(0, 4.8, 19.5); this.lookTarget = new THREE.Vector3(0, 2, 11)
+    this.scene.updateMatrixWorld(true)
+    this.camera.position.set(0, 3.5, 16); this.lookTarget = new THREE.Vector3(0, 2, 11)
     this.resizeObserver = new ResizeObserver(() => this.resize()); this.resizeObserver.observe(host); this.resize()
   }
   keep(obj) { this.resources.add(obj); return obj }
@@ -121,11 +124,11 @@ export class RangerWorld {
     const m=this.keep(new THREE.SpriteMaterial({map:texture})); const sprite=new THREE.Sprite(m);sprite.position.set(...position);sprite.scale.set(width,width/4,1);parent.add(sprite)
   }
   buildCamp() {
-    // Open-sided shelter, so the following camera never gets trapped indoors.
     const tentMat=this.mat('#526951', {side:THREE.DoubleSide})
     for(const [cx,cz] of [[0,16],[-10,-26.8]]) {
       for(const x of [-2.4,2.4]) for(const z of [-1.5,1.5]) this.beam([cx+x,terrainHeight(cx+x,cz+z),cz+z],[cx+x,3.8,cz+z],.07,this.m.wood)
       const roof=this.box([cx,4,cz],[5.7,.14,4],tentMat);roof.rotation.z=.06
+      this.cameraObstacles.push(roof)
       this.box([cx,1,cz],[5.4,.22,3.5],this.m.wood)
     }
     for(const cache of CACHES) {
@@ -251,13 +254,18 @@ export class RangerWorld {
     const look=new THREE.Vector3(p.x+Math.sin(camera.yaw)*.5,p.y+1.48,p.z-Math.cos(camera.yaw)*.5)
     const length=camera.distance*Math.cos(camera.pitch)
     const goal=new THREE.Vector3(p.x-Math.sin(camera.yaw)*length,p.y+1.4+Math.sin(camera.pitch)*camera.distance,p.z+Math.cos(camera.yaw)*length)
-    // Pull the camera in before a trunk instead of looking through it.
+    // Pull in before the actual shelter geometry; open sides alone do not prevent roof occlusion.
+    const rayDirection=goal.clone().sub(look), rayLength=rayDirection.length()
+    this.cameraRay.set(look,rayDirection.normalize());this.cameraRay.far=rayLength
+    const shelterHit=this.cameraRay.intersectObjects(this.cameraObstacles,false)[0]
+    if(shelterHit) goal.copy(look).addScaledVector(rayDirection,Math.max(.6,shelterHit.distance-.45))
     for(let f=.2;f<1;f+=.1) {
       const q=look.clone().lerp(goal,f)
       if(FOREST.some(t=>Math.hypot(q.x-t.x,q.z-t.z)<.6&&q.y<terrainHeight(t.x,t.z)+5*t.scale)) {goal.copy(look.clone().lerp(goal,Math.max(.25,f-.12)));break}
     }
     goal.y=Math.max(goal.y,floorHeight(goal.x,goal.z)+.45)
     this.camera.position.lerp(goal,1-Math.exp(-dt*9));this.lookTarget.lerp(look,1-Math.exp(-dt*11));this.camera.lookAt(this.lookTarget)
+    if(time-this.shadowTime>.2||time<this.shadowTime) {this.renderer.shadowMap.needsUpdate=true;this.shadowTime=time}
     this.renderer.render(this.scene,this.camera);this.renderer.domElement.dataset.ready='true'
   }
   dispose() {
