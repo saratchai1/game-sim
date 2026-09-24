@@ -1,0 +1,22 @@
+/* Expedition polish only. Existing farm and wardrobe layouts stay independent. */
+.route-hint{display:flex;align-items:center;gap:10px;border-top:1px solid #d9c18b35;margin-top:12px;padding-top:10px;color:#efd8a6;max-width:290px}
+.route-arrow{display:grid;place-items:center;flex:0 0 28px;height:28px;border:1px solid #dcc18477;border-radius:50%;font-size:21px;line-height:1;color:#f2d495;background:#182d23bb}
+.route-hint strong,.route-hint small{display:block}.route-hint strong{font-size:11px;font-weight:600}.route-hint small{font-size:9px;line-height:1.55;color:#b9c6ad;margin-top:3px}
+.field-advice{margin-top:12px;padding:9px 10px;background:#12261ddd;border-left:2px solid #b5c49c;color:#d7e2c9;text-align:left;font-size:10px;line-height:1.6;border-radius:2px}
+.field-advice strong,.field-advice small{display:block}.field-advice strong{font-size:11px;font-weight:600}.field-advice small{color:#c5ccb5;font-size:9px;margin-top:3px}
+.field-advice[data-kind="danger"]{border-color:#eaa881;background:#482c22e8}.field-advice[data-kind="warning"],.field-advice[data-kind="obstacle"]{border-color:#e2c081}.field-advice[data-kind="safe"]{border-color:#a1d6ad}
+.camera-recenter{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-width:44px!important;min-height:44px!important}.camera-recenter>span:first-child{font-size:21px}.camera-recenter kbd{font-size:9px;color:#d9c38d;border:1px solid #d9c38d44;border-radius:2px;padding:1px 3px}.camera-recenter:disabled{opacity:.5;cursor:default}
+@media(max-width:1100px){.camera-recenter .recenter-label{display:none}}
+@media(max-width:760px){.route-hint{margin-top:7px;padding-top:7px;gap:7px}.route-arrow{flex-basis:23px;height:23px;font-size:17px}.route-hint strong{font-size:10px}.route-hint small{font-size:8px}.field-advice{padding:6px;margin-top:7px}.field-advice strong{font-size:9px}.field-advice small{font-size:8px}.camera-recenter{padding:5px 8px!important}.camera-recenter kbd{display:none}.top-actions{gap:5px}}
+@media(max-width:450px){.profile-copy{width:125px}.profile-copy>.eyebrow{letter-spacing:.12em}.top-actions{right:max(8px,env(safe-area-inset-right))}.camera-recenter{min-width:44px!important}.field-advice small{line-height:1.6}.route-hint{max-width:100%}}
+@media(max-height:510px) and (min-width:600px){.route-hint{margin-top:6px;padding-top:5px;max-width:205px}.route-hint strong{font-size:9px}.route-hint small{display:none}.route-arrow{flex-basis:21px;height:21px;font-size:16px}.field-advice{padding:5px;margin-top:6px}.field-advice strong{font-size:8px}.field-advice small{display:none}.camera-recenter .recenter-label{display:none}}
+
+/* Short screens: keep the added guidance outside the thumb-control zones. */
+@media(max-height:510px) and (min-width:600px){
+  .mission>.eyebrow{display:none}
+  .mission h1{margin:1px 0}
+  .mission .distance{margin-top:1px}
+  .route-hint{margin-top:3px;padding-top:3px}
+  .field-advice{position:fixed;left:50%;top:80px;width:min(270px,38vw);transform:translateX(-50%);margin:0;text-align:center}
+  .field-advice[data-kind="calm"]{display:none}
+}

@@ -1,0 +1,67 @@
+name: Ranger Action QA
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/action/**'
+      - 'action/**'
+      - 'tests/action*.test.js'
+      - 'tests/wardrobe.test.js'
+      - 'scripts/action-*.mjs'
+      - 'vite.config.js'
+      - '.github/workflows/action-qa.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ranger-action-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Test all game rules
+        run: npm test
+      - name: Build both versions
+        run: npm run build
+      - name: Build standalone action HTML
+        run: node scripts/action-standalone.mjs
+      - name: Install browser test tools
+        run: |
+          npm install --no-save --package-lock=false playwright@1.55.0
+          npx playwright install --with-deps chromium
+      - name: Start production preview
+        run: |
+          npm run preview -- --host 127.0.0.1 > /tmp/ranger-preview.log 2>&1 &
+          for i in $(seq 1 30); do curl -sf http://127.0.0.1:4173/action/ > /dev/null && break; sleep 1; done
+      - name: Guidance, camera and mobile usability checks
+        run: node scripts/action-guide-qa.mjs
+      - name: Character studio and wardrobe browser checks
+        run: node scripts/action-wardrobe-qa.mjs
+      - name: Run original action browser regressions
+        if: ${{ !cancelled() }}
+        run: node scripts/action-qa.mjs
+      - name: Preserve playable build, source and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mangrove-ranger-action
+          path: |
+            action-artifacts/
+            dist/
+            action/
+            src/action/
+            tests/action*.test.js
+            tests/wardrobe.test.js
+            scripts/action-*.mjs
+            docs/ACTION_VERSION.md
+            docs/CHARACTER_STUDIO.md
+            docs/ACTION_POLISH.md
+          retention-days: 14

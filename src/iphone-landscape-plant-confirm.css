@@ -1,3 +1,13 @@
+/* Portrait confirmation uses the same minimum target as the landscape CTA.
+   Do not shrink the existing mobile-shell QA threshold to hide the regression. */
+@media (max-width: 820px) {
+  .selected-plot-card .confirm-plant,
+  .selected-plot-card .soil-action {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 /* Keep the plot confirmation action visible in short iPhone landscape viewports.
    The previous 125px card cap clipped the empty-plot action below the scroll area.
    Use a 1024px landscape ceiling because Pro Max class iPhones can report >900 CSS px wide. */

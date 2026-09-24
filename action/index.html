@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#182820" />
+  <meta name="description" content="Mangrove Ranger: a third-person coastal restoration adventure. Explore, overcome environmental obstacles, plant mangroves and verify your impact." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='8' fill='%23182820'/%3E%3Cpath d='M11 29Q9 10 30 9Q33 31 11 29M11 29L26 14' stroke='%23e1c28a' stroke-width='2' fill='none'/%3E%3C/svg%3E" />
+  <title>Mangrove Ranger — Field Expedition</title>
+</head>
+<body>
+<div class="ranger-app">
+  <div class="ranger-world" id="ranger-world" tabindex="0"></div>
+  <div class="vignette"></div>
+  <div class="hud">
+    <div class="profile"><div class="crest">R</div><div class="profile-copy"><span class="eyebrow">MANGROVE RANGER</span><strong>หน่วยฟื้นฟูชายฝั่ง</strong><div class="vital" aria-label="สุขภาพ"><i id="health-fill"></i><span id="health-value">100</span></div><div class="vital stamina" aria-label="พลังงาน"><i id="stamina-fill"></i><span id="stamina-value">100</span></div></div></div>
+    <div class="compass"><div><span>W</span><span>·</span><b>N</b><span>·</span><span>E</span></div><small id="bearing">000°</small></div>
+    <div class="top-actions"><button class="icon-button" id="wardrobe-open" title="แต่งตัว [C]" aria-label="เปิดห้องแต่งตัว">แต่งตัว</button><button class="icon-button" id="camera-lock" title="ล็อกเมาส์เพื่อมองรอบตัว">มุมกล้อง</button><button class="icon-button" id="pause" aria-label="พักเกม">Ⅱ</button></div>
+    <section class="mission"><span class="eyebrow">FIELD EXPEDITION / 01</span><h1 id="mission-title">รับกล้าไม้จากเรือนเพาะชำ</h1><p id="mission-detail"></p><span class="distance" id="target-distance"></span><div class="checklist"><span>ปลูกป่า<b id="plant-count">0/6</b></span><span>เก็บขยะ<b id="trash-count">0/3</b></span><span>หลักฐาน<b id="sample-count">0/3</b></span></div></section>
+    <div class="map-panel"><div class="map-title">THE TIDAL FOREST</div><div class="map-frame"><canvas id="minimap" width="160" height="160" aria-label="แผนที่ภารกิจ จุดสีทองคือจุดปลูก สีขาวคือตัวผู้เล่น"></canvas></div><div class="environment"><span id="weather"></span><span id="tide"></span></div></div>
+    <div class="benefits"><div>ธรรมชาติ<b id="biodiversity">12</b></div><div>ชุมชน<b id="community">10</b></div><div>ชายฝั่ง<b id="resilience">0</b></div><div>เครดิตจำลอง<b id="credit-count">0</b></div></div>
+    <div class="inventory" id="inventory" role="group" aria-label="เลือกชนิดกล้าไม้"></div>
+    <div class="instructions"><div><kbd>W A S D</kbd> เดิน · <kbd>SHIFT</kbd> วิ่ง<br /><kbd>SPACE</kbd> กระโดด · <kbd>E</kbd> ลงมือ · <kbd>C</kbd> แต่งตัว<br />ลากบนฉากเพื่อหมุนกล้อง</div><small id="save-status">บันทึกแยกจากเกมฟาร์ม</small><a href="../">กลับเกมฟาร์มเดิม ↗</a></div>
+    <div class="prompt" id="prompt" hidden><kbd>E</kbd><div><strong id="prompt-title"></strong><small id="prompt-note"></small></div><div class="progress-track"><i id="action-progress"></i></div></div>
+    <div class="notice" id="notice" role="status" aria-live="polite"></div>
+    <div class="hazard" id="hazard" role="status" hidden></div><div class="crosshair"></div>
+  </div>
+  <div class="touch-controls"><div class="joystick" id="joystick" role="group" aria-label="จอยเดิน"><i id="stick-knob"></i></div><button class="touch-button" id="touch-e" aria-label="กดค้างเพื่อลงมือ"><span>E</span>ลงมือ</button><button class="touch-button" id="touch-jump" aria-label="กระโดด"><span>↑</span>กระโดด</button><button class="touch-button" id="touch-sprint" aria-label="กดค้างเพื่อวิ่ง">วิ่ง</button></div>
+  <section class="screen intro" id="intro"><div class="intro-card"><span class="eyebrow">A COAST WORTH FIGHTING FOR</span><h2>MANGROVE<em>RANGER</em></h2><h3>ลุยชายฝั่ง แล้วพาป่ากลับมา</h3><p>สวมบทเจ้าหน้าที่ฟื้นฟูป่า เดินข้ามซากไม้ ลุยเลน รับมือกับน้ำขึ้นและพายุ เก็บขยะ ปลูกไม้ให้เหมาะกับพื้นที่ แล้วนำหลักฐานกลับฐาน</p><div class="intro-pills"><span>6 จุดปลูก</span><span>3 ชนิดไม้</span><span>1 ภารกิจฟื้นฟู</span></div><button class="primary" id="start">เริ่ม / กลับสู่ภารกิจ →</button><p class="version">ACTION PROTOTYPE 01 · เวอร์ชันแยกจาก <a href="../">เกมฟาร์มเดิม</a></p><p class="disclaimer">เวลาเติบโต คาร์บอน และผลประโยชน์ถูกย่อเป็นกลไกเกม เครดิตในเกมไม่ใช่คาร์บอนเครดิตจริง ไม่มีการซื้อขายเงินจริง</p></div></section>
+  <section class="screen" id="pause-screen" hidden><div class="menu-card"><span class="eyebrow">FIELD PAUSE</span><h2>พักภารกิจ</h2><p>WASD เดิน · Shift วิ่ง · Space กระโดด<br />1 / 2 / 3 เลือกกล้า · กด E ค้างเพื่อลงมือ<br />ลากเมาส์หรือปัดบนฉากเพื่อหมุนกล้อง<br />โคลนทำให้ช้า น้ำลึกทำให้หมดแรง พายุควรหลบที่ฐานหรือจุดพักหลังสะพาน</p><button class="primary" id="resume">กลับไปลุยต่อ</button><button class="secondary" id="wardrobe-pause">ห้องแต่งตัว · อุปกรณ์และชุดตัวละคร</button><button class="secondary" id="rescue">ขอทีมช่วยกลับฐาน — เก็บความคืบหน้าไว้</button><button class="danger" id="restart">เริ่มภารกิจแอ็กชันใหม่</button><a href="../">เปิดเกมฟาร์มเดิม</a><p class="disclaimer">เวอร์ชันแอ็กชันมี save ของตัวเอง ไม่เขียนทับข้อมูลเกมฟาร์ม</p></div></section>
+  <section class="screen" id="completion" hidden><div class="menu-card"><span class="eyebrow">EXPEDITION COMPLETE</span><h2>ชายฝั่งกลับมามีชีวิต</h2><p>ปลูกป่าครบ 6 จุด เก็บขยะครบ 3 กอง และส่งหลักฐานการเติบโตผ่านจุดตรวจ MRV แล้ว</p><div class="results"><div>เครดิตจำลองที่ตรวจแล้ว<b>6</b>ไม่ใช่เครดิตจริง</div><div>เวลาภารกิจ<b id="result-time"></b>เวลาเดินเกม</div></div><p>ธรรมชาติ / ชุมชน / ชายฝั่ง<br /><strong id="result-impact"></strong></p><button class="primary" id="continue">เดินสำรวจป่าต่อ</button><a href="../">กลับเกมฟาร์มเดิม</a></div></section>
+  <section class="screen" id="render-error" hidden><div class="menu-card"><h2>เปิดฉาก 3D ไม่สำเร็จ</h2><p id="error-detail"></p><a href="../">เปิดเกมฟาร์มเดิม</a></div></section>
+</div>
+<script type="module" src="/src/action/main.js"></script>
+</body>
+</html>
