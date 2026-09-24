@@ -1,6 +1,5 @@
 import './ranger.css'
 import './wardrobe.css'
-import { requestFrame as requestAnimationFrame, cancelFrame as cancelAnimationFrame } from './frame-loop.js'
 import { RangerWardrobe, slotIcon } from './wardrobe.js'
 import { loadAppearance, loadSavedLooks, saveAppearance } from './appearance.js'
 import { RangerWorld } from './world.js'
@@ -146,6 +145,10 @@ function drawMap() {
   const[x,y]=map(game.player.x,game.player.z);ctx.save();ctx.translate(x,y);ctx.rotate(-game.player.heading);ctx.fillStyle='#fffde9';ctx.beginPath();ctx.moveTo(0,-6);ctx.lineTo(-3.5,4);ctx.lineTo(3.5,4);ctx.closePath();ctx.fill();ctx.restore()
 }
 function updateHUD() {
+  // Live, read-only HUD telemetry is distinct from the periodic autosave.
+  host.setAttribute('data-game-time', String(game.time))
+  host.setAttribute('data-player-x', String(game.player.x))
+  host.setAttribute('data-player-z', String(game.player.z))
   const p=game.player,m=metrics(game),obj=objective(game),near=nearestAction(game)
   $('#health-fill').style.width=`${p.health}%`;$('#health-value').textContent=Math.ceil(p.health)
   $('#stamina-fill').style.width=`${p.stamina}%`;$('#stamina-value').textContent=Math.ceil(p.stamina)

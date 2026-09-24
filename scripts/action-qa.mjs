@@ -73,15 +73,18 @@ async function exerciseLifecycle(page) {
     assert.equal(await page.locator('#pause-screen').isVisible(),true,'Restored game must wait for Resume')
     await page.waitForTimeout(250)
     assert.equal((await read()).time,before.time,'Time away must not advance hazards')
+    // Observe live simulation first: a 3-second *simulation-time* autosave is
+    // not a frame heartbeat on software WebGL. Pause below verifies persistence.
     await page.click('#resume')
-    await page.waitForFunction(({key,time})=>JSON.parse(localStorage.getItem(key)).time>time+.2,{key:SAVE_KEY,time:before.time},{timeout:45000})
+    await page.waitForFunction(time=>Number(document.querySelector('#ranger-world').dataset.gameTime)>time+.2,before.time,{timeout:45000})
     await page.click('#pause')
     const idle=await read()
+    assert.ok(idle.time>before.time+.2,'Resume must advance live simulation and persist it on Pause')
     assert.ok(Math.hypot(idle.player.x-before.player.x,idle.player.z-before.player.z)<.02,'No stuck movement after resume')
     assert.deepEqual(idle.seeds,before.seeds);assert.deepEqual(idle.sites,before.sites)
     await page.click('#resume');await page.keyboard.down('w')
     try {
-      await page.waitForFunction(({key,z})=>JSON.parse(localStorage.getItem(key)).player.z<z-.1,{key:SAVE_KEY,z:idle.player.z},{timeout:45000})
+      await page.waitForFunction(z=>Number(document.querySelector('#ranger-world').dataset.playerZ)<z-.1,idle.player.z,{timeout:45000})
     } finally {await page.keyboard.up('w')}
     await page.click('#pause');const moved=await read()
     assert.ok(moved.player.z<idle.player.z-.1,'Movement handlers must work after restoration')
@@ -143,7 +146,7 @@ try {
   report.passed=false;report.error=error.stack;report.runtimeErrors=errors
   if(activePage&&!activePage.isClosed()) {
     await activePage.screenshot({path:`${output}/action-failure.png`}).catch(()=>{})
-    report.failureState=await activePage.evaluate(key=>({save:localStorage.getItem(key),text:document.body.innerText,frames:window.__frameTrace,hidden:document.hidden,focused:document.hasFocus()}),SAVE_KEY).catch(()=>null)
+    report.failureState=await activePage.evaluate(key=>({save:localStorage.getItem(key),text:document.body.innerText,frames:window.__frameTrace,live:{time:document.querySelector('#ranger-world')?.dataset.gameTime,x:document.querySelector('#ranger-world')?.dataset.playerX,z:document.querySelector('#ranger-world')?.dataset.playerZ},hidden:document.hidden,focused:document.hasFocus()}),SAVE_KEY).catch(()=>null)
   }
   throw error
 } finally {await fs.writeFile(`${output}/qa-report.json`,JSON.stringify(report,null,2));await browser.close()}
