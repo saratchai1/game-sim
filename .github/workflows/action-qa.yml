@@ -41,6 +41,8 @@ jobs:
         run: |
           npm run preview -- --host 127.0.0.1 > /tmp/ranger-preview.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:4173/action/ > /dev/null && break; sleep 1; done
+      - name: Guidance, camera and mobile usability checks
+        run: node scripts/action-guide-qa.mjs
       - name: Character studio and wardrobe browser checks
         run: node scripts/action-wardrobe-qa.mjs
       - name: Run original action browser regressions
@@ -61,4 +63,5 @@ jobs:
             scripts/action-*.mjs
             docs/ACTION_VERSION.md
             docs/CHARACTER_STUDIO.md
+            docs/ACTION_POLISH.md
           retention-days: 14

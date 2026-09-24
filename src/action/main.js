@@ -3,14 +3,16 @@ import './wardrobe.css'
 import { RangerWardrobe, slotIcon } from './wardrobe.js'
 import { loadAppearance, loadSavedLooks, saveAppearance } from './appearance.js'
 import { RangerWorld } from './world.js'
-import { SAVE_KEY, SPECIES, SITES, TRASH, CACHES, STATION, FOREST, CAMP, createState, restore, serialize, step, metrics, objective, nearestAction, tide, isStorm, distance, rescue, clamp } from './simulation.js'
+import { expeditionGuidance } from './guidance.js'
+import { FieldGuide } from './field-guide.js'
+import { SAVE_KEY, SPECIES, SITES, TRASH, CACHES, STATION, FOREST, CAMP, createState, restore, serialize, step, metrics, nearestAction, tide, isStorm, distance, rescue, clamp } from './simulation.js'
 
 const $ = (selector) => document.querySelector(selector)
 const host = $('#ranger-world')
 let game
 try { game = restore(localStorage.getItem(SAVE_KEY)) } catch { game = createState() }
 let paused = true, started = false, completionSeen = game.verified, raf = 0, last = 0, accumulator = 0, hudTime = 0, saveTime = 0
-let world = null, wardrobe = null, dressing = false, lockerWasPaused = true
+let world = null, guide = null, wardrobe = null, dressing = false, lockerWasPaused = true
 const camera = { yaw: 0, pitch: 0.31, distance: 7 }
 const keys = new Set(), touch = { x: 0, z: 0, jump: false, sprint: false, interact: false }
 let lookPointer = null, stickPointer = null
@@ -64,6 +66,11 @@ function start() {
 }
 function select(index) { game.selected = index; updateHUD(); save() }
 function resume() { setPaused(false); host.focus() }
+function recenterCamera() {
+  if (!world || paused || dressing || !started) return
+  camera.yaw=-game.player.heading; camera.pitch=.31; camera.distance=7
+  release();host.focus()
+}
 function finish() {
   completionSeen = true; setPaused(true); $('#pause-screen').hidden = true; $('#completion').hidden = false
   $('#result-time').textContent = `${Math.floor(game.time / 60)}:${String(Math.floor(game.time % 60)).padStart(2,'0')}`
@@ -98,6 +105,7 @@ on(window,'keydown',e=>{
   if(['KeyW','KeyA','KeyS','KeyD','Space','KeyE','ShiftLeft','ShiftRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault()
   if(e.code==='Escape' && started && $('#completion').hidden) { if(!e.repeat) setPaused(!paused); return }
   if(paused) return
+  if(e.code==='KeyQ'&&!e.repeat) {e.preventDefault();recenterCamera();return}
   keys.add(e.code)
   if(['Digit1','Digit2','Digit3'].includes(e.code)) select(Number(e.code.at(-1))-1)
 })
@@ -141,7 +149,7 @@ function drawMap() {
   SITES.forEach((p,i)=>mark(p,game.sites[i].plantedAt!==null?'#98dfbd':'#dcc898',3.2))
   for(const c of CACHES) mark(c,'#dba35e',2.5)
   mark(STATION,'#f4eccd',3)
-  const target=objective(game).target,[tx,ty]=map(target.x,target.z);ctx.strokeStyle='#efd08c';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(tx,ty,6,0,Math.PI*2);ctx.stroke()
+  const target=expeditionGuidance(game,camera.yaw).target,[tx,ty]=map(target.x,target.z);ctx.strokeStyle='#efd08c';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(tx,ty,6,0,Math.PI*2);ctx.stroke()
   const[x,y]=map(game.player.x,game.player.z);ctx.save();ctx.translate(x,y);ctx.rotate(-game.player.heading);ctx.fillStyle='#fffde9';ctx.beginPath();ctx.moveTo(0,-6);ctx.lineTo(-3.5,4);ctx.lineTo(3.5,4);ctx.closePath();ctx.fill();ctx.restore()
 }
 function updateHUD() {
@@ -149,7 +157,7 @@ function updateHUD() {
   host.setAttribute('data-game-time', String(game.time))
   host.setAttribute('data-player-x', String(game.player.x))
   host.setAttribute('data-player-z', String(game.player.z))
-  const p=game.player,m=metrics(game),obj=objective(game),near=nearestAction(game)
+  const p=game.player,m=metrics(game),obj=expeditionGuidance(game,camera.yaw),near=nearestAction(game)
   $('#health-fill').style.width=`${p.health}%`;$('#health-value').textContent=Math.ceil(p.health)
   $('#stamina-fill').style.width=`${p.stamina}%`;$('#stamina-value').textContent=Math.ceil(p.stamina)
   $('#mission-title').textContent=obj.title;$('#mission-detail').textContent=obj.detail
@@ -157,10 +165,10 @@ function updateHUD() {
   $('#plant-count').textContent=`${m.planted}/6`;$('#trash-count').textContent=`${m.cleaned}/3`;$('#sample-count').textContent=`${m.samples}/3`
   $('#biodiversity').textContent=m.biodiversity;$('#community').textContent=m.community;$('#resilience').textContent=m.resilience
   $('#credit-count').textContent=game.credits
-  $('#weather').textContent=isStorm(game.time)?'พายุชายฝั่ง':game.time%160>88?'พายุกำลังใกล้เข้ามา':'อากาศเปิด'
+  $('#weather').textContent=isStorm(game.time)?'พายุชายฝั่ง':game.time%160>=90&&game.time%160<105?'พายุกำลังใกล้เข้ามา':'อากาศเปิด'
   $('#tide').textContent=tide(game.time)>.6?'น้ำขึ้นสูง':tide(game.time)>.38?'น้ำกำลังเปลี่ยนระดับ':'น้ำลง'
   $('#hazard').hidden=!p.hazard;$('#hazard').textContent=p.hazard||''
-  $('#bearing').textContent=`${String(Math.round((camera.yaw*180/Math.PI+3600)%360)).padStart(3,'0')}°`
+  $('#bearing').textContent=`${String(Math.round(((camera.yaw*180/Math.PI)%360+360)%360)%360).padStart(3,'0')}°`
   $('#prompt').hidden=!near
   if(near) {
     $('#prompt-title').textContent=near.blocked||near.title
@@ -190,11 +198,11 @@ function animate(ms) {
     if(game.verified&&!completionSeen)finish()
   }
   if(dressing) wardrobe?.update(dt)
-  else world?.update(game,camera,dt)
+  else {guide?.update(game,camera,dt,started&&!paused);world?.update(game,camera,dt)}
   hudTime+=dt;if(hudTime>.1){updateHUD();hudTime=0}
 }
 try {
-  world=new RangerWorld(host,loadAppearance());updateHUD();raf=requestAnimationFrame(animate)
+  world=new RangerWorld(host,loadAppearance());guide=new FieldGuide(world,recenterCamera);updateHUD();raf=requestAnimationFrame(animate)
 } catch(error) {
   console.error('Action renderer failed',error)
   $('#intro').hidden=true;$('#render-error').hidden=false
@@ -210,6 +218,7 @@ on(window,'pagehide',event=>{
   if(event.persisted) return
   listeners.splice(0).forEach(remove=>remove())
   wardrobe?.dispose();wardrobe=null
+  guide?.dispose();guide=null
   world?.dispose(); world=null
 })
 on(window,'pageshow',event=>{

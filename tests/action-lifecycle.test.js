@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import * as simulation from '../src/action/simulation.js'
 import * as appearance from '../src/action/appearance.js'
+import * as guidance from '../src/action/guidance.js'
 
 // Execute the real action controller; replace only browser/renderer boundaries.
 // The separate Playwright suite also exercises persisted events in Chromium.
@@ -45,7 +46,7 @@ function harness(initial = simulation.createState()) {
   document.querySelector = element; document.querySelectorAll = () => []
   document.pointerLockElement = null; document.hidden = false
   const store = new Map([[simulation.SAVE_KEY, simulation.serialize(initial)]]), frames = new Map()
-  let denied = false, frameId = 0, clock = 0, world, wardrobe
+  let denied = false, frameId = 0, clock = 0, world, wardrobe, guide
   const localStorage = {
     getItem: key => store.get(key) ?? null,
     setItem(key, value) { if (denied) throw new Error('quota denied'); store.set(key, value) },
@@ -56,6 +57,11 @@ function harness(initial = simulation.createState()) {
     setAppearance(value) { this.outfit = value }
     dispose() { this.disposals++ }
   }
+  class Guide {
+    constructor(world,onRecenter) {guide=this;this.disposals=0;this.onRecenter=onRecenter}
+    update() {}
+    dispose() {this.disposals++}
+  }
   class Wardrobe {
     constructor(callbacks) { wardrobe=this;this.callbacks=callbacks;this.updates=0;this.opened=false }
     open(outfit,looks) {this.outfit=outfit;this.looks=looks;this.opened=true}
@@ -64,7 +70,7 @@ function harness(initial = simulation.createState()) {
     update() {this.updates++}
     dispose() {this.opened=false}
   }
-  const context = vm.createContext({ ...simulation, ...appearance, slotIcon: () => '', RangerWardrobe: Wardrobe,
+  const context = vm.createContext({ ...simulation, ...appearance, ...guidance, FieldGuide: Guide, slotIcon: () => '', RangerWardrobe: Wardrobe,
     loadAppearance: () => appearance.loadAppearance(localStorage), loadSavedLooks: () => appearance.loadSavedLooks(localStorage),
     saveAppearance: (outfit,looks) => appearance.saveAppearance(outfit,looks,localStorage), window, document, localStorage, console,
     RangerWorld: World, requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId },
@@ -78,7 +84,7 @@ function harness(initial = simulation.createState()) {
       pending.forEach(fn => fn(clock))
     }
   }
-  return { window, document, element, frames, tick, get world() { return world }, get wardrobe() { return wardrobe }, readOutfit: () => appearance.loadAppearance(localStorage),
+  return { window, document, element, frames, tick, get world() { return world }, get guide() { return guide }, get wardrobe() { return wardrobe }, readOutfit: () => appearance.loadAppearance(localStorage),
     read: () => JSON.parse(store.get(simulation.SAVE_KEY)),
     denyStorage: value => { denied = value },
     start: () => { element('#start').fire('click'); tick(2) },
@@ -208,4 +214,18 @@ test('returning from cached page with locker open requires explicit game Resume 
 test('explicit Resume replaces a lost browser frame with exactly one live loop',()=>{
  const h=harness();h.start();h.pause();h.frames.clear();h.resume();assert.equal(h.frames.size,1)
  h.resume();assert.equal(h.frames.size,1);h.key('KeyW');h.tick(12);h.pause();assert.ok(h.read().time>0)
+})
+
+
+test('recenter faces behind the ranger, respects pause, and releases held movement', () => {
+  const h=harness();h.start();h.key('KeyD');h.tick(20)
+  h.key('KeyQ');h.tick(2)
+  assert.ok(Math.abs(h.world.camera.yaw + h.world.player.heading)<1e-8)
+  const x=h.world.player.x;h.tick(15);assert.equal(h.world.player.x,x)
+  h.pause();const yaw=h.world.camera.yaw;h.key('KeyQ');h.tick(2);assert.equal(h.world.camera.yaw,yaw)
+})
+test('guidance presentation survives cached transitions and disposes on final page exit',()=>{
+  const h=harness();h.start();h.window.fire('pagehide',{persisted:true})
+  assert.equal(h.guide.disposals,0);h.window.fire('pageshow',{persisted:true})
+  h.resume();h.window.fire('pagehide',{persisted:false});assert.equal(h.guide.disposals,1)
 })

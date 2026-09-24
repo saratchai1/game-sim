@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { RangerAvatar } from './character.js'
+import { boomFraction } from './camera-safety.js'
 import { CAMP, CACHES, FOREST, LOGS, MUD, SITES, SPECIES, STATION, TRASH, terrainHeight, floorHeight, tide, isStorm, random } from './simulation.js'
 
 // Original procedural scene. No downloaded images, models or runtime CDN calls.
@@ -7,6 +8,8 @@ export class RangerWorld {
   constructor(host, appearance) {
     this.appearance = appearance; this.avatar = null
     this.host = host; this.resources = new Set(); this.plants = []; this.debris = []
+    this.trunkVolumes=FOREST.map(t=>({x:t.x,z:t.z,radius:.24*t.scale+.28,bottom:terrainHeight(t.x,t.z),top:terrainHeight(t.x,t.z)+5.8*t.scale}))
+    this.reducedMotion=matchMedia('(prefers-reduced-motion: reduce)')
     this.cameraObstacles = []; this.cameraRay = new THREE.Raycaster(); this.shadowTime = -1
     this.scene = new THREE.Scene(); this.scene.background = new THREE.Color('#b9cabb')
     this.scene.fog = new THREE.FogExp2('#b9cabb', 0.021)
@@ -247,12 +250,17 @@ export class RangerWorld {
     this.cameraRay.set(look,rayDirection.normalize());this.cameraRay.far=rayLength
     const shelterHit=this.cameraRay.intersectObjects(this.cameraObstacles,false)[0]
     if(shelterHit) goal.copy(look).addScaledVector(rayDirection,Math.max(.6,shelterHit.distance-.45))
-    for(let f=.2;f<1;f+=.1) {
-      const q=look.clone().lerp(goal,f)
-      if(FOREST.some(t=>Math.hypot(q.x-t.x,q.z-t.z)<.6&&q.y<terrainHeight(t.x,t.z)+5*t.scale)) {goal.copy(look.clone().lerp(goal,Math.max(.25,f-.12)));break}
-    }
+    const fraction=boomFraction(look,goal,this.trunkVolumes)
+    if(fraction<1) goal.lerpVectors(look,goal,fraction)
     goal.y=Math.max(goal.y,floorHeight(goal.x,goal.z)+.45)
-    this.camera.position.lerp(goal,1-Math.exp(-dt*9));this.lookTarget.lerp(look,1-Math.exp(-dt*11));this.camera.lookAt(this.lookTarget)
+    // Retract immediately; easing through an obstruction still clips the view.
+    // Easing outward remains comfortable once the obstacle is behind us.
+    if(shelterHit||fraction<1) this.camera.position.copy(goal)
+    else this.camera.position.lerp(goal,1-Math.exp(-dt*9))
+    this.lookTarget.lerp(look,1-Math.exp(-dt*11));this.camera.lookAt(this.lookTarget)
+    const targetFov=this.reducedMotion.matches?53:p.sprinting?57:53
+    const fov=THREE.MathUtils.damp(this.camera.fov,targetFov,4,dt)
+    if(Math.abs(fov-this.camera.fov)>.001){this.camera.fov=fov;this.camera.updateProjectionMatrix()}
     if(time-this.shadowTime>.2||time<this.shadowTime) {this.renderer.shadowMap.needsUpdate=true;this.shadowTime=time}
     this.renderer.render(this.scene,this.camera);this.renderer.domElement.dataset.ready='true'
   }
