@@ -1,5 +1,6 @@
 import './ranger.css'
 import './wardrobe.css'
+import { requestFrame as requestAnimationFrame, cancelFrame as cancelAnimationFrame } from './frame-loop.js'
 import { RangerWardrobe, slotIcon } from './wardrobe.js'
 import { loadAppearance, loadSavedLooks, saveAppearance } from './appearance.js'
 import { RangerWorld } from './world.js'
