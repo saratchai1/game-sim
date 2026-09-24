@@ -28,14 +28,14 @@ export class RangerAvatar {
   roundedBox(){
     const s=new THREE.Shape(),r=.11,w=.5
     s.moveTo(-w+r,-w);s.lineTo(w-r,-w);s.quadraticCurveTo(w,-w,w,-w+r);s.lineTo(w,w-r);s.quadraticCurveTo(w,w,w-r,w);s.lineTo(-w+r,w);s.quadraticCurveTo(-w,w,-w,w-r);s.lineTo(-w,-w+r);s.quadraticCurveTo(-w,-w,-w+r,-w)
-    const g=new THREE.ExtrudeGeometry(s,{depth:.78,bevelEnabled:true,bevelSegments:3,steps:1,bevelSize:.07,bevelThickness:.11,curveSegments:4});g.translate(0,0,-.39);g.computeVertexNormals();return g
+    const g=new THREE.ExtrudeGeometry(s,{depth:.78,bevelEnabled:true,bevelSegments:2,steps:1,bevelSize:.07,bevelThickness:.11,curveSegments:3});g.translate(0,0,-.39);g.computeVertexNormals();return g
   }
   group(name,pos,parent=this.root){const g=new THREE.Group();g.name=name;g.position.set(...pos);parent.add(g);this.joints[name]=g;return g}
   mesh(g,m,pos,scale=[1,1,1],parent=this.root,rotation=null){
     const o=new THREE.Mesh(g,m);o.position.set(...pos);o.scale.set(...scale);if(rotation)o.rotation.set(...rotation)
     o.castShadow=true;o.receiveShadow=true;parent.add(o);return o
   }
-  ball(p,s,m,parent){return this.mesh(this.g.sphere,m,p,s,parent)}
+  ball(p,s,m,parent){return this.mesh(Math.max(...s) < .12 ? this.g.small : this.g.sphere,m,p,s,parent)}
   box(p,s,m,parent,rotation){return this.mesh(this.g.box,m,p,s,parent,rotation)}
   bar(a,b,r,m,parent){const x=new THREE.Vector3(...a),v=new THREE.Vector3(...b).sub(x);const o=this.mesh(this.g.cylinder,m,x.addScaledVector(v,.5).toArray(),[r,v.length(),r],parent);o.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),v.normalize());return o}
   ring(p,s,m,parent,rotation=[Math.PI/2,0,0]){return this.mesh(this.g.ring,m,p,s,parent,rotation)}

@@ -37,13 +37,15 @@ jobs:
         run: |
           npm install --no-save --package-lock=false playwright@1.55.0
           npx playwright install --with-deps chromium
-      - name: Run action browser checks on the production build
+      - name: Start production preview
         run: |
           npm run preview -- --host 127.0.0.1 > /tmp/ranger-preview.log 2>&1 &
           for i in $(seq 1 30); do curl -sf http://127.0.0.1:4173/action/ > /dev/null && break; sleep 1; done
-          node scripts/action-qa.mjs
       - name: Character studio and wardrobe browser checks
         run: node scripts/action-wardrobe-qa.mjs
+      - name: Run original action browser regressions
+        if: ${{ !cancelled() }}
+        run: node scripts/action-qa.mjs
       - name: Preserve playable build, source and test evidence
         if: always()
         uses: actions/upload-artifact@v4
