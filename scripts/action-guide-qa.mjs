@@ -59,12 +59,13 @@ try{
     checks.push('blocked-site cleanup guidance + safe bridge waypoint + pre-storm countdown + paused save isolation')
     await context.close()
   }
-  for(const [name,viewport] of [['portrait',{width:390,height:844}],['landscape',{width:844,height:390}]] ){
-    const s=createState();s.seeds=[1,1,1];s.cleaned=['t1','t2','t3'];s.sites.forEach(p=>p.plantedAt=0);s.time=65
+  for(const [name,viewport] of [['portrait',{width:390,height:844}],['landscape',{width:844,height:390}],['landscape-warning',{width:844,height:390}]] ){
+    const s=createState();s.seeds=[1,1,1];s.cleaned=['t1','t2','t3'];s.sites.forEach(p=>p.plantedAt=0);s.time=name.endsWith('warning')?96:65
     Object.assign(s.player,{x:0,z:-2,y:floorHeight(0,-2)})
     const {page,context}=await open(viewport,true,s)
     assert.equal(await page.locator('#ranger-world').getAttribute('data-guide-phase'),'evidence')
     assert.equal(await page.locator('#ranger-world').getAttribute('data-guide-target'),SITES[1].id)
+    if(name.endsWith('warning')) assert.match(await page.locator('.field-advice').innerText(),/พายุกำลังเข้า/)
     await assertButton(page,true,context)
     const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)
     assert.equal(overflow,false,'phone UI has no horizontal page overflow')
@@ -72,6 +73,18 @@ try{
       const r=await page.locator(selector).boundingBox();assert.ok(r,'touch control remains visible')
       const top=await page.evaluate(({x,y})=>document.elementFromPoint(x,y)?.closest('.joystick,.touch-button')?.id,{x:r.x+r.width/2,y:r.y+r.height/2})
       assert.equal(top,selector.slice(1),'guide never covers movement/action controls')
+    }
+    // Readable labels must not sit underneath a thumb control, even when
+    // pointer-events:none would make the control technically clickable.
+    for(const label of ['.route-hint','.field-advice']){
+      if(!await page.locator(label).isVisible())continue
+      const a=await page.locator(label).boundingBox()
+      for(const selector of ['#joystick','#touch-e','#touch-jump','#touch-sprint']){
+        const b=await page.locator(selector).boundingBox()
+        const overlapX=Math.max(0,Math.min(a.x+a.width,b.x+b.width)-Math.max(a.x,b.x))
+        const overlapY=Math.max(0,Math.min(a.y+a.height,b.y+b.height)-Math.max(a.y,b.y))
+        assert.equal(overlapX*overlapY,0,`${label} must not visually overlap ${selector} on ${name}`)
+      }
     }
     await page.screenshot({path:`${output}/guide-${name}.png`})
     checks.push(`${name}: ready evidence target + real touch recenter + clear movement controls`)

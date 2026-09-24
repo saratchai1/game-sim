@@ -10,3 +10,13 @@
 @media(max-width:760px){.route-hint{margin-top:7px;padding-top:7px;gap:7px}.route-arrow{flex-basis:23px;height:23px;font-size:17px}.route-hint strong{font-size:10px}.route-hint small{font-size:8px}.field-advice{padding:6px;margin-top:7px}.field-advice strong{font-size:9px}.field-advice small{font-size:8px}.camera-recenter{padding:5px 8px!important}.camera-recenter kbd{display:none}.top-actions{gap:5px}}
 @media(max-width:450px){.profile-copy{width:125px}.profile-copy>.eyebrow{letter-spacing:.12em}.top-actions{right:max(8px,env(safe-area-inset-right))}.camera-recenter{min-width:44px!important}.field-advice small{line-height:1.6}.route-hint{max-width:100%}}
 @media(max-height:510px) and (min-width:600px){.route-hint{margin-top:6px;padding-top:5px;max-width:205px}.route-hint strong{font-size:9px}.route-hint small{display:none}.route-arrow{flex-basis:21px;height:21px;font-size:16px}.field-advice{padding:5px;margin-top:6px}.field-advice strong{font-size:8px}.field-advice small{display:none}.camera-recenter .recenter-label{display:none}}
+
+/* Short screens: keep the added guidance outside the thumb-control zones. */
+@media(max-height:510px) and (min-width:600px){
+  .mission>.eyebrow{display:none}
+  .mission h1{margin:1px 0}
+  .mission .distance{margin-top:1px}
+  .route-hint{margin-top:3px;padding-top:3px}
+  .field-advice{position:fixed;left:50%;top:80px;width:min(270px,38vw);transform:translateX(-50%);margin:0;text-align:center}
+  .field-advice[data-kind="calm"]{display:none}
+}
