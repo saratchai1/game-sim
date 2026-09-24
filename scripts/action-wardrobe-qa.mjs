@@ -60,7 +60,10 @@ try{
   const {context,page}=await open(viewport,true)
   const cdp=await context.newCDPSession(page),r=await page.locator('#locker-apply').boundingBox()
   assert.ok(r&&r.width>=44&&r.height>=44&&r.x>=0&&r.y>=0&&r.x+r.width<=viewport.width+1&&r.y+r.height<=viewport.height+1,'Equip CTA must remain inside the viewport')
-  await page.click('[data-tab="loadouts"]');await page.click('[data-preset="rescue"]');await page.waitForTimeout(500);await shot(page,name)
+  await page.click('[data-tab="loadouts"]');await page.click('[data-preset="rescue"]');await page.waitForTimeout(500)
+  const layout=await page.evaluate(()=>{const r=document.querySelector('#wardrobe-screen').getBoundingClientRect();return{left:r.left,width:r.width,scrollWidth:document.documentElement.scrollWidth,viewport:innerWidth,scrollX}})
+  assert.ok(layout.left>=-.5&&layout.width<=viewport.width+1&&layout.scrollWidth<=viewport.width+1&&layout.scrollX===0,`No phone dialog horizontal overflow: ${JSON.stringify(layout)}`)
+  await shot(page,name)
   // Real touch, not just a synthetic click, confirms the outfit on both layouts.
   await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:r.x+r.width/2,y:r.y+r.height/2,id:1}]});await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]})
   await page.waitForSelector('#wardrobe-screen',{state:'detached'})

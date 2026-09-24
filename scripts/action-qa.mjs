@@ -17,6 +17,13 @@ async function pageFor(viewport, mobile=false, fixture=null, standalone=false) {
   const context=await browser.newContext({viewport,deviceScaleFactor:1,isMobile:mobile,hasTouch:mobile})
   if(fixture) await context.addInitScript(({key,data})=>localStorage.setItem(key,JSON.stringify(data)),{key:SAVE_KEY,data:fixture})
   const page=await context.newPage();activePage=page;page.on('pageerror',e=>errors.push(e.message))
+  await page.addInitScript(()=>{
+    const nativeRAF=window.requestAnimationFrame.bind(window),nativeCancel=window.cancelAnimationFrame.bind(window)
+    const trace=window.__frameTrace={scheduled:0,executed:0,cancelled:0,events:[]}
+    window.requestAnimationFrame=fn=>{trace.scheduled++;return nativeRAF(ms=>{trace.executed++;fn(ms)})}
+    window.cancelAnimationFrame=id=>{trace.cancelled++;return nativeCancel(id)}
+    for(const name of ['pagehide','pageshow','blur','focus','click'])window.addEventListener(name,e=>{trace.events.push({name,id:e.target?.id,persisted:e.persisted,at:performance.now(),hidden:document.hidden,focused:document.hasFocus()});if(trace.events.length>30)trace.events.shift()})
+  })
   await page.goto(standalone ? pathToFileURL(resolve(output,'Mangrove-Ranger.html')).href : `${base}/action/`,{waitUntil:'networkidle'})
   await page.waitForSelector('#ranger-world canvas[data-ready="true"]',{timeout:60000})
   await page.click('#start');await page.waitForTimeout(1200)
@@ -136,7 +143,7 @@ try {
   report.passed=false;report.error=error.stack;report.runtimeErrors=errors
   if(activePage&&!activePage.isClosed()) {
     await activePage.screenshot({path:`${output}/action-failure.png`}).catch(()=>{})
-    report.failureState=await activePage.evaluate(key=>({save:localStorage.getItem(key),text:document.body.innerText}),SAVE_KEY).catch(()=>null)
+    report.failureState=await activePage.evaluate(key=>({save:localStorage.getItem(key),text:document.body.innerText,frames:window.__frameTrace,hidden:document.hidden,focused:document.hasFocus()}),SAVE_KEY).catch(()=>null)
   }
   throw error
 } finally {await fs.writeFile(`${output}/qa-report.json`,JSON.stringify(report,null,2));await browser.close()}

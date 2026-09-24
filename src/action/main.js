@@ -35,6 +35,12 @@ function setPaused(value) {
   $('#pause-screen').hidden = !value || !started || !$('#completion').hidden || dressing
   if(value && document.pointerLockElement) document.exitPointerLock()
   if(value && started) save()
+  // Explicit resume owns a fresh request; a suspended callback may have been
+  // dropped even when its old numeric request id survives the page transition.
+  if(!value && world) {
+    cancelAnimationFrame(raf); last=0; accumulator=0
+    raf=requestAnimationFrame(animate)
+  }
 }
 function openWardrobe() {
   if (!world || !started || dressing || !$('#completion').hidden) return

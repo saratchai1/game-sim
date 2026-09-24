@@ -48,7 +48,7 @@ export class RangerAvatar {
   build(){
     const a=this.appearance,m=this.m
     // Boots sit on the collision floor. All equipment remains purely cosmetic.
-    const hip=this.group('hip',[0,.96,0]);this.ball([0,0,0],[.265,.19,.16],m.pants,hip)
+    const hip=this.group('hip',[0,.96,0]);this.ball([0,-.01,0],[.24,.13,.15],m.pants,hip)
     this.box([0,.07,-.015],[.55,.065,.33],m.leather,hip)
     this.box([0,.07,-.19],[.09,.06,.025],m.metal,hip)
     this.box([0,.07,-.212],[.05,.033,.012],m.sole,hip)
@@ -98,27 +98,24 @@ export class RangerAvatar {
     const a=this.appearance,m=this.m
     this.mesh(this.g.cylinder,m.skin,[0,.584,0],[.093,.17,.09],torso)
     const head=this.group('head',[0,.77,-.012],torso)
-    // Separate cranial/jaw volumes; front is -Z in both studio and expedition.
-    this.ball([0,0,0],[.199,.245,.168],m.skin,head)
-    this.ball([0,-.117,-.031],[.154,.129,.14],m.skin,head)
-    this.ball([0,-.193,-.060],[.095,.040,.073],m.skin,head)
+    // Continuous face silhouette; front is -Z in both studio and expedition.
+    this.ball([0,0,0],[.195,.25,.166],m.skin,head)
     for(const side of [-1,1]){
       this.ball([side*.190,-.012,.004],[.039,.064,.039],m.skin,head)
       this.ball([side*.210,-.011,-.019],[.013,.036,.008],m.lip,head)
-      this.ball([side*.116,-.059,-.130],[.055,.049,.029],m.skin,head)
       const eye=this.group(`eye${side}`,[side*.074,.027,-.159],head);this.eyeGroups.push(eye)
-      this.ball([0,0,0],[.045,.023,.013],m.eye,eye)
-      this.ball([0,.001,-.012],[.0185,.021,.0045],m.iris,eye)
-      this.ball([0,.001,-.016],[.0085,.014,.0025],m.black,eye)
+      this.ball([0,0,0],[.038,.019,.013],m.eye,eye)
+      this.ball([0,.001,-.012],[.0145,.017,.0045],m.iris,eye)
+      this.ball([0,.001,-.016],[.007,.011,.0025],m.black,eye)
       this.ball([-.005,.009,-.019],[.004,.004,.0015],m.eye,eye)
       this.bar([side*.036,.065,-.166],[side*.108,.07,-.152],.011,m.hair,head)
       this.bar([side*.045,.002,-.169],[side*.107,.005,-.159],.0035,m.skin,head)
     }
     this.ball([0,-.012,-.17],[.029,.059,.027],m.skin,head)
-    this.ball([0,-.051,-.195],[.036,.024,.034],m.skin,head)
+    this.ball([0,-.051,-.195],[.028,.02,.024],m.skin,head)
     for(const x of [-.021,.021])this.ball([x,-.066,-.207],[.007,.004,.008],m.lip,head)
-    this.bar([-.045,-.128,-.160],[.045,-.128,-.160],.005,m.lip,head)
-    this.ball([0,-.139,-.16],[.034,.008,.006],m.skin,head)
+    this.bar([-.034,-.13,-.150],[.034,-.13,-.150],.004,m.lip,head)
+    this.ball([0,-.143,-.143],[.028,.006,.006],m.skin,head)
     // Hair cap + locks, visible sides even with headwear. Each style has a distinct silhouette.
     const hairGeo=this.keep(new THREE.SphereGeometry(1,24,14,0,Math.PI*2,0,Math.PI*.53))
     this.mesh(hairGeo,m.hair,[0,.045,.013],[.205,.221,.171],head)

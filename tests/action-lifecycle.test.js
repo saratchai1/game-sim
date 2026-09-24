@@ -203,3 +203,9 @@ test('returning from cached page with locker open requires explicit game Resume 
  h.key('Escape');assert.equal(h.element('#pause-screen').hidden,false);h.tick(60);assert.equal(h.read().time,before.time)
  h.resume();h.key('KeyW');h.tick(12);h.pause();assert.ok(h.read().player.z<before.player.z)
 })
+
+
+test('explicit Resume replaces a lost browser frame with exactly one live loop',()=>{
+ const h=harness();h.start();h.pause();h.frames.clear();h.resume();assert.equal(h.frames.size,1)
+ h.resume();assert.equal(h.frames.size,1);h.key('KeyW');h.tick(12);h.pause();assert.ok(h.read().time>0)
+})
