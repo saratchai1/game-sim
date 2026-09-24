@@ -1,9 +1,11 @@
 import * as THREE from 'three'
+import { RangerAvatar } from './character.js'
 import { CAMP, CACHES, FOREST, LOGS, MUD, SITES, SPECIES, STATION, TRASH, terrainHeight, floorHeight, tide, isStorm, random } from './simulation.js'
 
 // Original procedural scene. No downloaded images, models or runtime CDN calls.
 export class RangerWorld {
-  constructor(host) {
+  constructor(host, appearance) {
+    this.appearance = appearance; this.avatar = null
     this.host = host; this.resources = new Set(); this.plants = []; this.debris = []
     this.cameraObstacles = []; this.cameraRay = new THREE.Raycaster(); this.shadowTime = -1
     this.scene = new THREE.Scene(); this.scene.background = new THREE.Color('#b9cabb')
@@ -187,30 +189,18 @@ export class RangerWorld {
       this.debris.push({id:t.id,group})
     }
   }
-  buildCharacter() {
-    const body=new THREE.Group();this.scene.add(body);this.character=body
-    const shirt=this.mat('#83906a'), trousers=this.mat('#384d49'), skin=this.mat('#bd9475'), pack=this.mat('#97744d'), boots=this.mat('#3a3830')
-    this.mesh(this.g.sphere,shirt,[0,1.05,0],[.34,.46,.23],body)
-    this.mesh(this.g.sphere,skin,[0,1.61,-.025],[.19,.23,.18],body)
-    this.mesh(this.g.trunk,this.m.wood,[0,1.83,0],[.32,.04,.32],body)
-    this.mesh(this.g.trunk,this.m.wood,[0,1.91,.015],[.2,.16,.2],body)
-    this.mesh(this.g.sphere,pack,[0,1.13,.3],[.35,.4,.18],body)
-    this.box([0,1.12,.44],[.54,.22,.08],pack,body)
-    this.beam([-.29,1.56,.3],[.29,1.56,.3],.12,this.m.dark,body)
-    for(const x of [-.23,.23]) this.box([x,1.15,.46],[.045,.52,.03],this.m.dark,body)
-    this.limbs=[]
-    for(const side of [-1,1]) {
-      const arm=new THREE.Group();arm.position.set(side*.37,1.35,0);body.add(arm)
-      this.mesh(this.g.sphere,shirt,[0,-.21,0],[.115,.26,.115],arm)
-      this.mesh(this.g.sphere,skin,[0,-.46,0],[.085,.13,.09],arm)
-      const leg=new THREE.Group();leg.position.set(side*.15,.79,0);body.add(leg)
-      this.mesh(this.g.sphere,trousers,[0,-.32,0],[.13,.36,.13],leg)
-      this.mesh(this.g.sphere,boots,[0,-.69,-.085],[.145,.11,.22],leg)
-      this.limbs.push({arm,leg,side})
+  buildCharacter() { this.setAppearance(this.appearance) }
+  setAppearance(value) {
+    const next = new RangerAvatar(value)
+    if (this.avatar?.signature === next.signature) { next.dispose(); return }
+    if (this.character) {
+      next.root.position.copy(this.character.position)
+      next.root.rotation.copy(this.character.rotation)
     }
-    const tool=this.box([.37,.91,-.02],[.035,.42,.04],this.m.wood,body)
-    tool.rotation.z=.15
-    this.mesh(this.g.sphere,this.m.metal,[.39,.68,-.02],[.09,.12,.025],body)
+    this.avatar?.dispose()
+    this.avatar = next; this.character = next.root
+    this.renderer.domElement.dataset.outfit = next.signature
+    this.scene.add(this.character); this.renderer.shadowMap.needsUpdate = true
   }
   buildAtmosphere() {
     const rng=random(12), geo=this.keep(new THREE.BufferGeometry()), positions=new Float32Array(900)
@@ -230,9 +220,7 @@ export class RangerWorld {
     const p=s.player,time=s.time;this.character.position.set(p.x,p.y,p.z)
     const turn=Math.atan2(Math.sin(p.heading-this.character.rotation.y),Math.cos(p.heading-this.character.rotation.y))
     this.character.rotation.y+=turn*Math.min(1,dt*14)
-    this.character.rotation.x=s.progress>0?.18:0
-    const swing=p.moving?Math.sin(time*(p.sprinting?13:8))*.6:Math.sin(time*2)*.035
-    this.limbs.forEach(l=>{l.leg.rotation.x=swing*l.side;l.arm.rotation.x=s.progress>0?-1.1:-swing*l.side*.65})
+    this.avatar.update(dt,time,p,s.progress)
     this.water.position.y=tide(time)
     const storm=isStorm(time);this.rain.visible=storm;this.rain.position.set(p.x,0,p.z)
     if(storm) {const a=this.rain.geometry.attributes.position;for(let i=0;i<a.count;i++) a.setY(i,(a.getY(i)-dt*18+15)%15);a.needsUpdate=true}
@@ -269,6 +257,6 @@ export class RangerWorld {
     this.renderer.render(this.scene,this.camera);this.renderer.domElement.dataset.ready='true'
   }
   dispose() {
-    this.resizeObserver.disconnect();this.scene.traverse(o=>{if(o.isInstancedMesh)o.dispose()});this.resources.forEach(o=>o.dispose?.());this.renderer.dispose();this.renderer.domElement.remove()
+    this.avatar?.dispose();this.resizeObserver.disconnect();this.scene.traverse(o=>{if(o.isInstancedMesh)o.dispose()});this.resources.forEach(o=>o.dispose?.());this.renderer.dispose();this.renderer.domElement.remove()
   }
 }

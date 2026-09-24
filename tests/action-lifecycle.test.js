@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import * as simulation from '../src/action/simulation.js'
+import * as appearance from '../src/action/appearance.js'
 
 // Execute the real action controller; replace only browser/renderer boundaries.
 // The separate Playwright suite also exercises persisted events in Chromium.
@@ -44,7 +45,7 @@ function harness(initial = simulation.createState()) {
   document.querySelector = element; document.querySelectorAll = () => []
   document.pointerLockElement = null; document.hidden = false
   const store = new Map([[simulation.SAVE_KEY, simulation.serialize(initial)]]), frames = new Map()
-  let denied = false, frameId = 0, clock = 0, world
+  let denied = false, frameId = 0, clock = 0, world, wardrobe
   const localStorage = {
     getItem: key => store.get(key) ?? null,
     setItem(key, value) { if (denied) throw new Error('quota denied'); store.set(key, value) },
@@ -52,9 +53,20 @@ function harness(initial = simulation.createState()) {
   class World {
     constructor() { world = this; this.disposals = 0; this.updates = 0; this.renderer = { domElement: element('canvas') } }
     update(game, camera) { this.updates++; this.player = { ...game.player }; this.camera = { ...camera } }
+    setAppearance(value) { this.outfit = value }
     dispose() { this.disposals++ }
   }
-  const context = vm.createContext({ ...simulation, window, document, localStorage, console,
+  class Wardrobe {
+    constructor(callbacks) { wardrobe=this;this.callbacks=callbacks;this.updates=0;this.opened=false }
+    open(outfit,looks) {this.outfit=outfit;this.looks=looks;this.opened=true}
+    cancel() {this.opened=false;this.callbacks.onClose(false)}
+    apply(outfit=this.outfit,looks=this.looks) {const ok=this.callbacks.onApply(outfit,looks);if(ok){this.opened=false;this.callbacks.onClose(true)}return ok}
+    update() {this.updates++}
+    dispose() {this.opened=false}
+  }
+  const context = vm.createContext({ ...simulation, ...appearance, slotIcon: () => '', RangerWardrobe: Wardrobe,
+    loadAppearance: () => appearance.loadAppearance(localStorage), loadSavedLooks: () => appearance.loadSavedLooks(localStorage),
+    saveAppearance: (outfit,looks) => appearance.saveAppearance(outfit,looks,localStorage), window, document, localStorage, console,
     RangerWorld: World, requestAnimationFrame: fn => { frames.set(++frameId, fn); return frameId },
     cancelAnimationFrame: id => frames.delete(id),
   })
@@ -66,7 +78,7 @@ function harness(initial = simulation.createState()) {
       pending.forEach(fn => fn(clock))
     }
   }
-  return { window, document, element, frames, tick, get world() { return world },
+  return { window, document, element, frames, tick, get world() { return world }, get wardrobe() { return wardrobe }, readOutfit: () => appearance.loadAppearance(localStorage),
     read: () => JSON.parse(store.get(simulation.SAVE_KEY)),
     denyStorage: value => { denied = value },
     start: () => { element('#start').fire('click'); tick(2) },
@@ -160,4 +172,34 @@ test('switching away saves and pauses; resume clears stuck keyboard input', () =
   assert.equal(h.element('#pause-screen').hidden, false)
   h.resume(); h.tick(30); h.pause()
   assert.equal(h.read().player.z, saved.player.z); assert.equal(h.world.disposals, 0)
+})
+
+
+test('wardrobe pauses hazards and held movement, while the preview alone continues updating',()=>{
+ const h=harness();h.start();h.key('KeyW');h.tick(12);h.key('KeyC');const before=h.read(),updates=h.world.updates
+ h.tick(60);assert.equal(h.read().time,before.time);assert.equal(h.world.updates,updates);assert.ok(h.wardrobe.updates>0)
+ assert.equal(h.element('#pause-screen').hidden,true);h.key('Escape');assert.equal(h.wardrobe.opened,false)
+ h.tick(12);h.pause();assert.equal(h.read().player.z,before.player.z)
+})
+test('equipping saves cosmetics without changing expedition inventory or completed restoration',()=>{
+ const s=simulation.createState();s.seeds=[2,3,1];s.sites[0].plantedAt=0;s.cleaned=['t1']
+ const h=harness(s);h.start();h.key('KeyC');assert.equal(h.wardrobe.apply(appearance.PRESETS[1].outfit,[]),true)
+ assert.deepEqual(h.readOutfit(),appearance.PRESETS[1].outfit);assert.equal(h.world.outfit.head,'helmet')
+ assert.deepEqual(h.read().seeds,s.seeds);assert.equal(h.read().sites[0].plantedAt,0);assert.deepEqual(h.read().cleaned,s.cleaned)
+})
+test('cancel discards outfit changes; opening from Pause returns to Pause',()=>{
+ const h=harness();h.start();h.pause();h.element('#wardrobe-pause').fire('click');h.wardrobe.outfit={...appearance.PRESETS[1].outfit};h.wardrobe.cancel()
+ assert.deepEqual(h.readOutfit(),appearance.DEFAULT_APPEARANCE);assert.equal(h.world.outfit,undefined);assert.equal(h.element('#pause-screen').hidden,false)
+})
+test('a failed wardrobe save leaves the wardrobe open and the game outfit unchanged',()=>{
+ const h=harness();h.start();h.key('KeyC');h.denyStorage(true)
+ assert.equal(h.wardrobe.apply(appearance.PRESETS[2].outfit),false);assert.equal(h.world.outfit,undefined);assert.equal(h.wardrobe.opened,true)
+ h.denyStorage(false);assert.equal(h.wardrobe.apply(appearance.PRESETS[2].outfit),true);assert.equal(h.world.outfit.head,'cap')
+})
+test('returning from cached page with locker open requires explicit game Resume after closing',()=>{
+ const h=harness();h.start();h.key('KeyC');const before=h.read()
+ h.window.fire('pagehide',{persisted:true});h.window.fire('pageshow',{persisted:true});h.tick(30)
+ assert.equal(h.wardrobe.opened,true);assert.equal(h.world.disposals,0);assert.equal(h.frames.size,1)
+ h.key('Escape');assert.equal(h.element('#pause-screen').hidden,false);h.tick(60);assert.equal(h.read().time,before.time)
+ h.resume();h.key('KeyW');h.tick(12);h.pause();assert.ok(h.read().player.z<before.player.z)
 })

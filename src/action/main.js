@@ -1,4 +1,7 @@
 import './ranger.css'
+import './wardrobe.css'
+import { RangerWardrobe, slotIcon } from './wardrobe.js'
+import { loadAppearance, loadSavedLooks, saveAppearance } from './appearance.js'
 import { RangerWorld } from './world.js'
 import { SAVE_KEY, SPECIES, SITES, TRASH, CACHES, STATION, FOREST, CAMP, createState, restore, serialize, step, metrics, objective, nearestAction, tide, isStorm, distance, rescue, clamp } from './simulation.js'
 
@@ -7,7 +10,7 @@ const host = $('#ranger-world')
 let game
 try { game = restore(localStorage.getItem(SAVE_KEY)) } catch { game = createState() }
 let paused = true, started = false, completionSeen = game.verified, raf = 0, last = 0, accumulator = 0, hudTime = 0, saveTime = 0
-let world = null
+let world = null, wardrobe = null, dressing = false, lockerWasPaused = true
 const camera = { yaw: 0, pitch: 0.31, distance: 7 }
 const keys = new Set(), touch = { x: 0, z: 0, jump: false, sprint: false, interact: false }
 let lookPointer = null, stickPointer = null
@@ -27,10 +30,28 @@ function release() {
   $('#stick-knob').style.transform = 'translate(0,0)'
 }
 function setPaused(value) {
+  if (dressing && !value) return
   paused = value; release(); accumulator = 0
-  $('#pause-screen').hidden = !value || !started || !$('#completion').hidden
+  $('#pause-screen').hidden = !value || !started || !$('#completion').hidden || dressing
   if(value && document.pointerLockElement) document.exitPointerLock()
   if(value && started) save()
+}
+function openWardrobe() {
+  if (!world || !started || dressing || !$('#completion').hidden) return
+  lockerWasPaused = paused; dressing = true; setPaused(true)
+  wardrobe ??= new RangerWardrobe({
+    onApply(outfit, looks) {
+      if (!saveAppearance(outfit, looks)) return false
+      world.setAppearance(outfit)
+      game.message = 'สวมชุดใหม่แล้ว · บันทึกชุดในเครื่องเรียบร้อย'; game.messageTime = 5
+      return true
+    },
+    onClose() {
+      dressing = false; setPaused(lockerWasPaused)
+      if (!lockerWasPaused) host.focus()
+    },
+  })
+  wardrobe.open(loadAppearance(), loadSavedLooks())
 }
 function start() {
   $('#intro').hidden = true; started = true; setPaused(false); save(); host.focus()
@@ -45,6 +66,9 @@ function finish() {
 
 $('#inventory').innerHTML = SPECIES.map((s,i) => `<button class="seed-slot" data-seed="${i}" aria-label="เลือก${s.name}" style="--seed-color:${s.color}"><span class="seed-number">${i+1}</span><span class="seed-icon"><i></i></span><span><strong>${s.name}</strong><small data-count="${i}">0 กล้า</small></span></button>`).join('')
 for(const button of document.querySelectorAll('[data-seed]')) on(button,'click',()=>select(Number(button.dataset.seed)))
+$('#wardrobe-open').innerHTML = `${slotIcon('outer')}<span>แต่งตัว</span><kbd>C</kbd>`
+on($('#wardrobe-open'),'click',openWardrobe)
+on($('#wardrobe-pause'),'click',openWardrobe)
 on($('#start'),'click',start)
 on($('#pause'),'click',()=>setPaused(true))
 on($('#resume'),'click',resume)
@@ -55,11 +79,16 @@ on($('#restart'),'click',()=>{
   game=createState();completionSeen=false;camera.yaw=0;save();resume()
 })
 on($('#camera-lock'),'click',()=>{
-  if(!world) return
+  if(!world || paused) return
   const result=world.renderer.domElement.requestPointerLock?.()
   result?.catch?.(()=>{ $('#save-status').textContent='ใช้การลากเมาส์หมุนกล้องแทนได้' })
 })
 on(window,'keydown',e=>{
+  if (dressing) {
+    if(e.code==='Escape'&&!e.repeat) {e.preventDefault(); wardrobe.cancel()}
+    return
+  }
+  if(e.code==='KeyC' && started) {if(!e.repeat){e.preventDefault();openWardrobe()}return}
   if(['KeyW','KeyA','KeyS','KeyD','Space','KeyE','ShiftLeft','ShiftRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault()
   if(e.code==='Escape' && started && $('#completion').hidden) { if(!e.repeat) setPaused(!paused); return }
   if(paused) return
@@ -67,8 +96,8 @@ on(window,'keydown',e=>{
   if(['Digit1','Digit2','Digit3'].includes(e.code)) select(Number(e.code.at(-1))-1)
 })
 on(window,'keyup',e=>keys.delete(e.code))
-on(window,'blur',()=>{ if(started&&!paused)setPaused(true); release() })
-on(document,'visibilitychange',()=>{if(document.hidden&&started)setPaused(true)})
+on(window,'blur',()=>{ if(dressing)lockerWasPaused=true; if(started&&!paused)setPaused(true); release() })
+on(document,'visibilitychange',()=>{if(document.hidden&&started){if(dressing)lockerWasPaused=true;setPaused(true)}})
 on(host,'pointerdown',e=>{ if(paused)return;lookPointer={id:e.pointerId,x:e.clientX,y:e.clientY};host.setPointerCapture(e.pointerId) })
 on(host,'pointermove',e=>{
   if(paused)return
@@ -78,7 +107,7 @@ on(host,'pointermove',e=>{
   camera.yaw+=dx*.004;camera.pitch=clamp(camera.pitch+dy*.003,.05,.7)
 })
 for(const event of ['pointerup','pointercancel','lostpointercapture']) on(host,event,()=>{lookPointer=null})
-on(host,'wheel',e=>{e.preventDefault();camera.distance=clamp(camera.distance+e.deltaY*.008,3.2,9)}, {passive:false})
+on(host,'wheel',e=>{e.preventDefault();if(paused)return;camera.distance=clamp(camera.distance+e.deltaY*.008,3.2,9)}, {passive:false})
 on(host,'contextmenu',e=>e.preventDefault())
 const stick=$('#joystick')
 function moveStick(e) {
@@ -150,11 +179,12 @@ function animate(ms) {
     if((!oldAction&&game.latch)||saveTime>3) {save();saveTime=0}
     if(game.verified&&!completionSeen)finish()
   }
-  world?.update(game,camera,dt)
+  if(dressing) wardrobe?.update(dt)
+  else world?.update(game,camera,dt)
   hudTime+=dt;if(hudTime>.1){updateHUD();hudTime=0}
 }
 try {
-  world=new RangerWorld(host);updateHUD();raf=requestAnimationFrame(animate)
+  world=new RangerWorld(host,loadAppearance());updateHUD();raf=requestAnimationFrame(animate)
 } catch(error) {
   console.error('Action renderer failed',error)
   $('#intro').hidden=true;$('#render-error').hidden=false
@@ -163,11 +193,13 @@ try {
 // A cached document will receive pageshow without running this module again.
 // Pause/save now, but keep the renderer and handlers alive until truly discarded.
 on(window,'pagehide',event=>{
+  if(dressing) lockerWasPaused=true
   if(started) setPaused(true)
   else release()
   cancelAnimationFrame(raf); raf=0; last=0; accumulator=0
   if(event.persisted) return
   listeners.splice(0).forEach(remove=>remove())
+  wardrobe?.dispose();wardrobe=null
   world?.dispose(); world=null
 })
 on(window,'pageshow',event=>{
