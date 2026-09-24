@@ -5,7 +5,7 @@ on:
     paths:
       - 'src/action/**'
       - 'action/**'
-      - 'tests/action.test.js'
+      - 'tests/action*.test.js'
       - 'scripts/action-*.mjs'
       - 'vite.config.js'
       - '.github/workflows/action-qa.yml'
@@ -51,7 +51,7 @@ jobs:
             dist/
             action/
             src/action/
-            tests/action.test.js
+            tests/action*.test.js
             scripts/action-*.mjs
             docs/ACTION_VERSION.md
           retention-days: 14

@@ -44,6 +44,49 @@ async function touchJoystick(page,context) {
   // Closing a CDP session can reset Chromium touch emulation. Keep it until context.close().
   assert.equal(await page.evaluate(()=>matchMedia('(pointer:coarse)').matches),true,'Screenshot must retain the real mobile input layout')
 }
+async function exerciseLifecycle(page) {
+  // Synthetic transitions are deterministic even when headless Chromium disables
+  // native BFCache. This tests the real page/controller, not physical Safari.
+  const read = () => page.evaluate(key=>JSON.parse(localStorage.getItem(key)),SAVE_KEY)
+  await page.evaluate(()=>{window.__lifecycleCanvas=document.querySelector('#ranger-world canvas')})
+  const rounds=[]
+  for(let round=0;round<2;round++) {
+    // Deliberately leave W held across the page transition. Resume must release it.
+    await page.keyboard.down('w')
+    await page.evaluate(()=>window.dispatchEvent(new PageTransitionEvent('pagehide',{persisted:true})))
+    await page.keyboard.up('w')
+    const before=await read()
+    assert.equal(await page.locator('#ranger-world canvas').count(),1,'Cached page must not dispose its renderer')
+    await page.waitForTimeout(250)
+    await page.evaluate(()=>{
+      window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))
+      window.dispatchEvent(new PageTransitionEvent('pageshow',{persisted:true}))
+    })
+    assert.equal(await page.evaluate(()=>window.__lifecycleCanvas===document.querySelector('#ranger-world canvas')),true)
+    assert.equal(await page.locator('#pause-screen').isVisible(),true,'Restored game must wait for Resume')
+    await page.waitForTimeout(250)
+    assert.equal((await read()).time,before.time,'Time away must not advance hazards')
+    await page.click('#resume')
+    await page.waitForFunction(({key,time})=>JSON.parse(localStorage.getItem(key)).time>time+.2,{key:SAVE_KEY,time:before.time},{timeout:45000})
+    await page.click('#pause')
+    const idle=await read()
+    assert.ok(Math.hypot(idle.player.x-before.player.x,idle.player.z-before.player.z)<.02,'No stuck movement after resume')
+    assert.deepEqual(idle.seeds,before.seeds);assert.deepEqual(idle.sites,before.sites)
+    await page.click('#resume');await page.keyboard.down('w')
+    try {
+      await page.waitForFunction(({key,z})=>JSON.parse(localStorage.getItem(key)).player.z<z-.1,{key:SAVE_KEY,z:idle.player.z},{timeout:45000})
+    } finally {await page.keyboard.up('w')}
+    await page.click('#pause');const moved=await read()
+    assert.ok(moved.player.z<idle.player.z-.1,'Movement handlers must work after restoration')
+    await page.click('#resume')
+    rounds.push({timeBefore:before.time,timeAfter:moved.time,progressPreserved:true})
+  }
+  await page.keyboard.down('Escape');await page.keyboard.up('Escape')
+  await page.evaluate(()=>window.dispatchEvent(new KeyboardEvent('keydown',{code:'Escape',repeat:true,bubbles:true})))
+  assert.equal(await page.locator('#pause-screen').isVisible(),true,'Repeated Escape must not resume')
+  await page.click('#resume')
+  report.lifecycle={passed:true,eventMode:'synthetic persisted pagehide/pageshow',rounds,escapeRepeat:true}
+}
 try {
   const desktop=await pageFor({width:1440,height:900})
   await desktop.page.screenshot({path:`${output}/action-desktop.png`})
@@ -53,6 +96,7 @@ try {
   const saved=await desktop.page.evaluate(key=>JSON.parse(localStorage.getItem(key)),SAVE_KEY)
   assert.ok(saved.player.x<-.5,'WASD movement must change the player position')
   report.movementAndSupply={passed:true,x:saved.player.x,seeds:saved.seeds}
+  await exerciseLifecycle(desktop.page)
   await desktop.context.close()
 
   // A new context prevents the running game's pagehide save from overwriting a test fixture.

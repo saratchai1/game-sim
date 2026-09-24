@@ -10,15 +10,25 @@ let paused = true, started = false, completionSeen = game.verified, raf = 0, las
 let world = null
 const camera = { yaw: 0, pitch: 0.31, distance: 7 }
 const keys = new Set(), touch = { x: 0, z: 0, jump: false, sprint: false, interact: false }
+let lookPointer = null, stickPointer = null
 const listeners = [], on = (el, event, fn, options) => { el.addEventListener(event, fn, options); listeners.push(() => el.removeEventListener(event, fn, options)) }
 function save() {
-  try { localStorage.setItem(SAVE_KEY, serialize(game)); $('#save-status').textContent = 'บันทึกในเครื่องแล้ว' }
+  try { localStorage.setItem(SAVE_KEY, serialize(game)); $('#save-status').textContent = 'บันทึกในเครื่องแล้ว'; $('#save-status').classList.remove('save-warning') }
   catch { $('#save-status').textContent = 'บันทึกไม่ได้ · อย่าปิดหน้านี้'; $('#save-status').classList.add('save-warning') }
 }
-function release() { keys.clear(); Object.assign(touch,{x:0,z:0,jump:false,sprint:false,interact:false}); $('#stick-knob').style.transform = 'translate(0,0)' }
+function release() {
+  keys.clear()
+  Object.assign(touch,{x:0,z:0,jump:false,sprint:false,interact:false})
+  const lookId = lookPointer?.id, stickId = stickPointer
+  lookPointer = null; stickPointer = null
+  if(lookId != null && host.hasPointerCapture?.(lookId)) host.releasePointerCapture(lookId)
+  const stick = $('#joystick')
+  if(stickId != null && stick.hasPointerCapture?.(stickId)) stick.releasePointerCapture(stickId)
+  $('#stick-knob').style.transform = 'translate(0,0)'
+}
 function setPaused(value) {
   paused = value; release(); accumulator = 0
-  $('#pause-screen').hidden = !value || !started
+  $('#pause-screen').hidden = !value || !started || !$('#completion').hidden
   if(value && document.pointerLockElement) document.exitPointerLock()
   if(value && started) save()
 }
@@ -51,7 +61,7 @@ on($('#camera-lock'),'click',()=>{
 })
 on(window,'keydown',e=>{
   if(['KeyW','KeyA','KeyS','KeyD','Space','KeyE','ShiftLeft','ShiftRight','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault()
-  if(e.code==='Escape' && started && $('#completion').hidden) { setPaused(!paused); return }
+  if(e.code==='Escape' && started && $('#completion').hidden) { if(!e.repeat) setPaused(!paused); return }
   if(paused) return
   keys.add(e.code)
   if(['Digit1','Digit2','Digit3'].includes(e.code)) select(Number(e.code.at(-1))-1)
@@ -59,7 +69,6 @@ on(window,'keydown',e=>{
 on(window,'keyup',e=>keys.delete(e.code))
 on(window,'blur',()=>{ if(started&&!paused)setPaused(true); release() })
 on(document,'visibilitychange',()=>{if(document.hidden&&started)setPaused(true)})
-let lookPointer=null
 on(host,'pointerdown',e=>{ if(paused)return;lookPointer={id:e.pointerId,x:e.clientX,y:e.clientY};host.setPointerCapture(e.pointerId) })
 on(host,'pointermove',e=>{
   if(paused)return
@@ -71,9 +80,9 @@ on(host,'pointermove',e=>{
 for(const event of ['pointerup','pointercancel','lostpointercapture']) on(host,event,()=>{lookPointer=null})
 on(host,'wheel',e=>{e.preventDefault();camera.distance=clamp(camera.distance+e.deltaY*.008,3.2,9)}, {passive:false})
 on(host,'contextmenu',e=>e.preventDefault())
-const stick=$('#joystick');let stickPointer=null
+const stick=$('#joystick')
 function moveStick(e) {
-  if(stickPointer!==e.pointerId)return
+  if(paused||stickPointer!==e.pointerId)return
   const r=stick.getBoundingClientRect(),dx=e.clientX-r.left-r.width/2,dy=e.clientY-r.top-r.height/2,d=Math.max(1,Math.hypot(dx,dy)/32)
   touch.x=clamp(dx/d/32,-1,1);touch.z=clamp(-dy/d/32,-1,1)
   $('#stick-knob').style.transform=`translate(${dx/d}px,${dy/d}px)`
@@ -151,6 +160,20 @@ try {
   $('#intro').hidden=true;$('#render-error').hidden=false
   $('#error-detail').textContent='เปิด WebGL ไม่สำเร็จ ลองเปิด Hardware Acceleration หรือใช้เบราว์เซอร์อื่น เกมฟาร์มเดิมยังเปิดจากลิงก์ด้านล่างได้'
 }
-on(window,'pagehide',()=>{
-  if(started)save();cancelAnimationFrame(raf);listeners.forEach(remove=>remove());world?.dispose()
-},{once:true})
+// A cached document will receive pageshow without running this module again.
+// Pause/save now, but keep the renderer and handlers alive until truly discarded.
+on(window,'pagehide',event=>{
+  if(started) setPaused(true)
+  else release()
+  cancelAnimationFrame(raf); raf=0; last=0; accumulator=0
+  if(event.persisted) return
+  listeners.splice(0).forEach(remove=>remove())
+  world?.dispose(); world=null
+})
+on(window,'pageshow',event=>{
+  if(!event.persisted || !world) return
+  release(); last=0; accumulator=0
+  updateHUD()
+  // Remain paused: time away must not become storm damage or movement.
+  if(!raf) raf=requestAnimationFrame(animate)
+})
